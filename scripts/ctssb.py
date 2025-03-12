@@ -21,12 +21,14 @@ def filter_dataset(dataset: list):
             filtered_dataset.append(entry)
 
     print(f"dataset size = {len(dataset):_}, filtered dataset size = {len(filtered_dataset):_}")
+    return filtered_dataset
 
 
 def main():
     file_path = pathlib.Path(CTSSB_DIR, "file-0.jsonl.gz")
     dataset = load_file(file_path)
     filtered_dataset = filter_dataset(dataset)
+    print(filtered_dataset[1])
 
 
 if __name__ == "__main__":
