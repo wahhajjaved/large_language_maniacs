@@ -8,8 +8,6 @@ def loadDataset(filepath):
     with open(filepath, 'r') as file:
         data = json.load(file)
 
-    print(data[0])
-
     return
 
 dataset1 = loadDataset("datasets/sstubsLarge.json")
@@ -27,12 +25,13 @@ def filterDataset(dataset):
 model_name = AutoModelForCausalLM.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Lite-Base", trust_remote_code=True, torch_dtype=torch.bfloat16).cuda()
 tokenizedModel = AutoTokenizer.from_pretrained(model_name)
 filteredData = filterDataset(dataset1)
+print(filterDataset[0])
 
 def tokenize_function(examples):
     return tokenizedModel(examples["before"], examples["after"], truncation = True)
 
 # tokenized_datasets = filteredData.map(tokenize_function, batched = True)
-tokenizedData = tokenizedModel.tokenize(filterDataset)
+tokenizedData = tokenizedModel.tokenize(filteredData)
 
 print(tokenizedData)
 # data_collator = DataCollatorWithPadding(tokenized)
