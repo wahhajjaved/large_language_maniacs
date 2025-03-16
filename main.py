@@ -25,12 +25,14 @@ def filterDataset(dataset):
     return filteredDataset
 
 model_name = AutoModelForCausalLM.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Lite-Base", trust_remote_code=True, torch_dtype=torch.bfloat16).cuda()
-tokenized = AutoTokenizer.from_pretrained(model_name)
+tokenizedModel = AutoTokenizer.from_pretrained(model_name)
 filteredData = filterDataset(dataset1)
 
 def tokenize_function(examples):
-    return tokenized(examples["before"], examples["after"], truncation = True)
+    return tokenizedModel(examples["before"], examples["after"], truncation = True)
 
-tokenized_datasets = filteredData.map(tokenize_function, batched = True)
+# tokenized_datasets = filteredData.map(tokenize_function, batched = True)
+tokenizedData = tokenizedModel.tokenize(filterDataset)
 
-data_collator = DataCollatorWithPadding(tokenized)
+print(tokenizedData)
+# data_collator = DataCollatorWithPadding(tokenized)
