@@ -2,6 +2,8 @@ import gzip
 import json
 import pathlib
 
+ENTRY_PER_PATTERN = 1000
+
 CTSSB_DIR: pathlib.Path = pathlib.Path("datasets/ctssb_data_1M")
 
 
@@ -14,21 +16,37 @@ def load_file(path: pathlib.Path) -> list:
     return dataset
 
 
-def filter_dataset(dataset: list):
-    filtered_dataset = []
-    for entry in dataset:
-        if entry["likely_bug"] and entry["sstub_pattern"] != "SINGLE_STMT":
-            filtered_dataset.append(entry)
+def categorize_using_pattern(dataset: list, data: dict[str, list[dict]]) -> dict[str, list[dict]]:
 
-    print(f"dataset size = {len(dataset):_}, filtered dataset size = {len(filtered_dataset):_}")
-    return filtered_dataset
+    for entry in dataset:
+        pattern = entry["sstub_pattern"]
+        if not entry["likely_bug"]:
+            continue
+        if pattern == "SINGLE_STMT":
+            continue
+
+        try:
+            if len(data[pattern]) < ENTRY_PER_PATTERN:
+                data[pattern].append(entry)
+        except KeyError:
+            data[pattern] = []
+            data[pattern].append(entry)
+
+    return data
 
 
 def main():
-    file_path = pathlib.Path(CTSSB_DIR, "file-0.jsonl.gz")
-    dataset = load_file(file_path)
-    filtered_dataset = filter_dataset(dataset)
-    print(filtered_dataset[1])
+    files = sorted(CTSSB_DIR.glob("*.jsonl.gz"))
+    data: dict[str, list[dict]] = {}
+    for file in files:
+        print(f"Loading file {file.name}")
+        dataset = load_file(file)
+        data = categorize_using_pattern(dataset, data)
+        sizes = [len(v) for v in data.values()]
+        if all(i >= ENTRY_PER_PATTERN for i in sizes):
+            for k, v in data.items():
+                print(f"{k}: {len(v)}")
+            break
 
 
 if __name__ == "__main__":
