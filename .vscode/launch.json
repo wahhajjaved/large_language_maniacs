@@ -11,6 +11,13 @@
             "request": "launch",
             "program": "${workspaceFolder}/scripts/ctssb.py",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "download_data",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/download_data.py",
+            "console": "integratedTerminal"
         }
     ]
 }
