@@ -1,0 +1,33 @@
+(deepseek_env) pan585@soarserver-1:/u1/users/pan585/cmpt470/large_language_maniacs> python model.py
+tokenizer_config.json: 100%|███████████████████████████████████████| 1.28k/1.28k [00:00<00:00, 5.09MB/s]
+tokenizer.json: 100%|██████████████████████████████████████████████| 4.61M/4.61M [00:00<00:00, 15.8MB/s]
+model-00004-of-000004.safetensors: 100%|███████████████████████████| 5.64G/5.64G [00:35<00:00, 97.0MB/s]
+Downloading shards: 100%|█████████████████████████████████████████████████| 4/4 [00:53<00:00, 13.46s/it]
+Loading checkpoint shards: 100%|██████████████████████████████████████████| 4/4 [06:24<00:00, 96.14s/it]
+generation_config.json: 100%|███████████████████████████████████████████| 181/181 [00:00<00:00, 804kB/s]
+Device set to use cuda:0
+Traceback (most recent call last):
+  File "/u1/users/pan585/cmpt470/large_language_maniacs/model.py", line 23, in <module>
+    generation_pipeline = pipeline(task="text-generation",
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/transformers/pipelines/__init__.py", line 1178, in pipeline
+    return pipeline_class(model=model, framework=framework, task=task, **kwargs)
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/transformers/pipelines/text_generation.py", line 99, in __init__
+    super().__init__(*args, **kwargs)
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/transformers/pipelines/base.py", line 985, in __init__
+    self.model.to(self.device)
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/transformers/modeling_utils.py", line 3162, in to
+    return super().to(*args, **kwargs)
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1343, in to
+    return self._apply(convert)
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  [Previous line repeated 4 more times]
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 930, in _apply
+    param_applied = fn(param)
+  File "/u1/users/pan585/deepseek_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1329, in convert
+    return t.to(
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 12.00 MiB. GPU 0 has a total capacity of 79.25 GiB of which 9.38 MiB is free. Process 2174668 has 4.99 GiB memory in use. Process 2246985 has 6.64 GiB memory in use. Process 3426679 has 5.00 GiB memory in use. Process 274740 has 2.27 GiB memory in use. Process 295585 has 2.27 GiB memory in use. Process 2539018 has 5.30 GiB memory in use. Including non-PyTorch memory, this process has 52.73 GiB memory in use. Of the allocated memory 52.29 GiB is allocated by PyTorch, and 34.62 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
