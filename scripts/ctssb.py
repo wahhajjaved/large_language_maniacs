@@ -2,9 +2,10 @@ import gzip
 import json
 import pathlib
 
-ENTRY_PER_PATTERN = 1000
+ENTRY_PER_PATTERN = 10
 
 CTSSB_DIR: pathlib.Path = pathlib.Path("datasets/ctssb_data_1M")
+SAVE_FILE: pathlib.Path = pathlib.Path("datasets/ctssb_prepared_dataset.jsonl")
 
 
 def load_file(path: pathlib.Path) -> list:
@@ -35,6 +36,17 @@ def categorize_using_pattern(dataset: list, data: dict[str, list[dict]]) -> dict
     return data
 
 
+def save_dataset(data: list[list[dict]]):
+    lines = []
+    for l in data:
+        for entry in l:
+            lines.append(json.dumps(entry))
+
+    with open(SAVE_FILE, "w") as f:
+        for line in lines:
+            f.write(line + "\n")
+
+
 def main():
     files = sorted(CTSSB_DIR.glob("*.jsonl.gz"))
     data: dict[str, list[dict]] = {}
@@ -47,6 +59,8 @@ def main():
             for k, v in data.items():
                 print(f"{k}: {len(v)}")
             break
+
+    save_dataset(data.values())
 
 
 if __name__ == "__main__":
