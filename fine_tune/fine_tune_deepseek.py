@@ -1,6 +1,9 @@
 import pathlib
 import sys
 
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 TRAINING_DATASSET_DIR = pathlib.Path("downloaded_data/ctssb")
 
 # deepseek message format:
@@ -28,6 +31,10 @@ class DeepseekQuery:
     def query(self):
         return self._query
 
+    @property
+    def inference_query(self):
+        return [{"role": "system", "content": self.system_message}, {"role": "user", "content": self._before_file}]
+
 
 def prepare_queries() -> list[DeepseekQuery]:
     queries: list[DeepseekQuery] = []
@@ -52,6 +59,30 @@ def prepare_queries() -> list[DeepseekQuery]:
 def main():
     queries = prepare_queries()
     print(f"{len(queries): } queries created. Queries using {sys.getsizeof(queries) / 1024: } MB")
+
+    tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct", trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+        trust_remote_code=True,
+        torch_dtype=torch.bfloat16,
+    ).cuda()
+
+    inputs = tokenizer.apply_chat_template(
+        (q.inference_query for q in queries),
+        add_generation_prompt=True,
+        return_tensors="pt",
+    ).to(model.device)
+    # tokenizer.eos_token_id is the id of <｜end▁of▁sentence｜>  token
+    outputs = model.generate(
+        inputs,
+        max_new_tokens=512,
+        do_sample=False,
+        top_k=50,
+        top_p=0.95,
+        num_return_sequences=1,
+        eos_token_id=tokenizer.eos_token_id,
+    )
+    print(tokenizer.decode(outputs[0][len(inputs[0]) :], skip_special_tokens=True))
 
 
 if __name__ == "__main__":
