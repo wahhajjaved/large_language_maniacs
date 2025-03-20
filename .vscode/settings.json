@@ -5,5 +5,9 @@
     "editor.quickSuggestions": {
         "other": "off"
     },
-    "editor.parameterHints.enabled": false
+    "editor.parameterHints.enabled": false,
+    "editor.quickSuggestionsDelay": 2000,
+    "editor.suggest.snippetsPreventQuickSuggestions": true,
+    "editor.hover.delay": 10000,
+    "workbench.hover.delay": 5000
 }

@@ -31,9 +31,9 @@ def load_dataset_file(path: pathlib.Path) -> list:
 def main():
     dataset: list[dict[str, str]] = load_dataset_file(CTSSB)
 
-    for entry in dataset:
-        before_filename = pathlib.Path(SAVE_DIR, f"{entry['parent_sha']}_before.py")
-        after_filename = pathlib.Path(SAVE_DIR, f"{entry['commit_sha']}_after.py")
+    for i, entry in enumerate(dataset):
+        before_filename = pathlib.Path(SAVE_DIR, f"{i}_before.py")
+        after_filename = pathlib.Path(SAVE_DIR, f"{i}_after.py")
 
         if not before_filename.exists():
             file_content = download_file(
