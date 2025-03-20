@@ -1,4 +1,5 @@
 import pathlib
+import sys
 
 TRAINING_DATASSET_DIR = pathlib.Path("downloaded_data/ctssb")
 
@@ -49,7 +50,8 @@ def prepare_queries() -> list[DeepseekQuery]:
 
 
 def main():
-    prepare_queries()
+    queries = prepare_queries()
+    print(f"{len(queries): } queries created. Queries using {sys.getsizeof(queries) / 1024: } MB")
 
 
 if __name__ == "__main__":
