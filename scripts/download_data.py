@@ -52,8 +52,8 @@ def main():
             )
             with open(after_filename, "w") as f:
                 f.write(file_content)
-        if i > 30:
-            break
+        # if i > 30:
+        #     break
 
 
 if __name__ == "__main__":
