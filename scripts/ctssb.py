@@ -2,10 +2,11 @@ import gzip
 import json
 import pathlib
 
-ENTRY_PER_PATTERN = 10
+ENTRY_PER_PATTERN = 5
 
 CTSSB_DIR: pathlib.Path = pathlib.Path("datasets/ctssb_data_1M")
 SAVE_FILE: pathlib.Path = pathlib.Path("datasets/ctssb_prepared_dataset.jsonl")
+DEFUNCT_PROJECTS_PATH = pathlib.Path = pathlib.Path("datasets/ctssb_data_1M/defunct_projects.txt")
 
 
 def load_file(path: pathlib.Path) -> list:
@@ -17,13 +18,15 @@ def load_file(path: pathlib.Path) -> list:
     return dataset
 
 
-def categorize_using_pattern(dataset: list, data: dict[str, list[dict]]) -> dict[str, list[dict]]:
+def categorize_using_pattern(dataset: list, exclude: list[str], data: dict[str, list[dict]]) -> dict[str, list[dict]]:
 
     for entry in dataset:
         pattern = entry["sstub_pattern"]
         if not entry["likely_bug"]:
             continue
         if pattern == "SINGLE_STMT":
+            continue
+        if entry["project"] in exclude:
             continue
 
         try:
@@ -48,12 +51,15 @@ def save_dataset(data: list[list[dict]]):
 
 
 def main():
+    with open(DEFUNCT_PROJECTS_PATH) as f:
+        defunct_projects = f.readlines()
     files = sorted(CTSSB_DIR.glob("*.jsonl.gz"))
     data: dict[str, list[dict]] = {}
+
     for file in files:
         print(f"Loading file {file.name}")
         dataset = load_file(file)
-        data = categorize_using_pattern(dataset, data)
+        data = categorize_using_pattern(dataset, defunct_projects, data)
         sizes = [len(v) for v in data.values()]
         if all(i >= ENTRY_PER_PATTERN for i in sizes):
             for k, v in data.items():
