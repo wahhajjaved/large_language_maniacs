@@ -18,6 +18,13 @@
             "request": "launch",
             "program": "${workspaceFolder}/scripts/download_data.py",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "fine_tune_deepseek",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/fine_tune/fine_tune_deepseek.py",
+            "console": "integratedTerminal"
         }
     ]
 }
