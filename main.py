@@ -1,6 +1,6 @@
 import json
 import torch
-import datasets import load_dataset
+from datasets import load_dataset
 import pytorch
 from transformers import AutoTokenizer, AutoModelForCausalLM, DataCollatorWithPadding
 
