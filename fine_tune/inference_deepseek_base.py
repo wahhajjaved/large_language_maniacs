@@ -52,14 +52,15 @@ def main():
         torch_dtype=torch.bfloat16,
     ).cuda()
 
-    inputs = tokenizer.apply_chat_template(
-        (q.inference_query for q in queries),
-        add_generation_prompt=True,
+    inputs = tokenizer(
+        #(q.inference_query for q in queries),
+        "# write a hello world program in python",
+        #add_generation_prompt=True,
         return_tensors="pt",
     ).to(model.device)
     # tokenizer.eos_token_id is the id of <｜end▁of▁sentence｜>  token
     outputs = model.generate(
-        inputs,
+        **inputs,
         max_new_tokens=512,
         do_sample=False,
         top_k=50,
