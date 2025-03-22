@@ -15,10 +15,23 @@ model_dir = getModelsPath()
 os.environ["HF_HOME"] = str(model_dir.absolute())
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import LoraConfig, PeftModel
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    HfArgumentParser,
+    TrainingArguments,
+    logging,
+    pipeline,
+)
+from trl import SFTTrainer
 
 from fine_tune.deepseek_query import DeepseekQuery
 from fine_tune.load_data import prepare_deepseek_ctssb_queries
+
+# Ignore warnings
+logging.set_verbosity(logging.CRITICAL)
 
 model_name = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
 new_model = "DeepSeek-Coder-V2-Lite-Instruct-python-finetuned"
