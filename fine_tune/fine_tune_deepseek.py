@@ -1,5 +1,15 @@
 import pathlib
 import sys
+import os
+
+def getModelsPath():
+    script_dir = pathlib.Path(__file__).resolve().parent
+    if script_dir.name == "fine_tune":
+	    return pathlib.Path(script_dir.parent, "models")
+    else:
+	    return pathlib.Path(script_dir, "models")
+model_dir = getModelsPath()   
+os.environ["HF_HOME"] = str(model_dir.absolute())
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -59,8 +69,11 @@ def prepare_queries() -> list[DeepseekQuery]:
 def main():
     queries = prepare_queries()
     print(f"{len(queries): } queries created. Queries using {sys.getsizeof(queries) / 1024: } MB")
-
-    tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct", trust_remote_code=True)
+	
+    print(f"Downloading model into {model_dir.absolute()}")
+	
+    tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+    trust_remote_code=True, cache_dir=model_dir)
     model = AutoModelForCausalLM.from_pretrained(
         "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
         trust_remote_code=True,
