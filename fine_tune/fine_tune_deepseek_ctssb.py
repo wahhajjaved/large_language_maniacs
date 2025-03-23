@@ -39,7 +39,7 @@ from fine_tune.load_data import prepare_deepseek_ctssb_queries
 logging.set_verbosity_error()
 
 model_name = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
-new_model = "DeepSeek-Coder-V2-Lite-Instruct-python-finetuned"
+new_model = "DeepSeek-Coder-V2-Lite-Instruct-python-finetuned-ctssb"
 
 ################################################################################
 # QLoRA parameters
