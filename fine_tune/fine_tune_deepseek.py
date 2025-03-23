@@ -1,6 +1,9 @@
 import os
 import pathlib
 import sys
+import warnings
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def getModelsPath():
@@ -13,6 +16,7 @@ def getModelsPath():
 
 model_dir = getModelsPath()
 os.environ["HF_HOME"] = str(model_dir.absolute())
+
 
 import torch
 from peft import LoraConfig, PeftModel
@@ -27,11 +31,12 @@ from transformers import (
 )
 from trl import SFTTrainer
 
+from datasets import Dataset
 from fine_tune.deepseek_query import DeepseekQuery
 from fine_tune.load_data import prepare_deepseek_ctssb_queries
 
 # Ignore warnings
-logging.set_verbosity(logging.CRITICAL)
+logging.set_verbosity_error()
 
 model_name = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
 new_model = "DeepSeek-Coder-V2-Lite-Instruct-python-finetuned"
@@ -135,6 +140,7 @@ device_map = {"": 0}
 
 def main():
     queries = prepare_deepseek_ctssb_queries()
+    dataset = Dataset.from_list([q.query for q in queries], split="train")
     print(f"{len(queries): } queries created. Queries using {sys.getsizeof(queries) / 1024: } MB")
 
     # Load tokenizer and model with QLoRA configuration
@@ -179,6 +185,7 @@ def main():
         r=lora_r,
         bias="none",
         task_type="CAUSAL_LM",
+        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
     )
 
     # Set training parameters
@@ -207,7 +214,7 @@ def main():
         model=model,
         train_dataset=dataset,
         peft_config=peft_config,
-        dataset_text_field="text",
+        dataset_text_field="prompt",
         max_seq_length=max_seq_length,
         tokenizer=tokenizer,
         args=training_arguments,
@@ -215,7 +222,7 @@ def main():
     )
 
     trainer.train()
-    trainer.model.save_pretrained(new_model)
+    trainer.model.save_pretrained(pathlib.Path(model_dir, new_model))
 
 
 if __name__ == "__main__":
