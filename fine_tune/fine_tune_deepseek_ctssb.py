@@ -139,7 +139,7 @@ device_map = {"": 0}
 
 
 def main():
-    queries = prepare_deepseek_ctssb_queries()
+    queries = prepare_deepseek_ctssb_queries("training")
     dataset = Dataset.from_list([q.query for q in queries], split="train")
     print(f"{len(queries): } queries created. Queries using {sys.getsizeof(queries) / 1024: } MB")
 
@@ -176,7 +176,7 @@ def main():
         cache_dir=model_dir,
     )
     tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "right"  # Fix weird overflow issue with fp16 training
+    tokenizer.padding_side = "right"
 
     # Load LoRA configuration
     peft_config = LoraConfig(

@@ -19,10 +19,18 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "fine_tune_deepseek",
+            "name": "fine_tune_deepseek_ctssb",
             "type": "debugpy",
             "request": "launch",
-            "module": "fine_tune.fine_tune_deepseek",
+            "module": "fine_tune.fine_tune_deepseek_ctssb",
+            "console": "integratedTerminal",
+            "justMyCode":false
+        },
+        {
+            "name": "inference_deepseek_fine_tuned_ctssb",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fine_tune.inference_deepseek_fine_tuned_ctssb",
             "console": "integratedTerminal",
             "justMyCode":false
         }
