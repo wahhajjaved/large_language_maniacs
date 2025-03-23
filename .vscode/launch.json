@@ -4,7 +4,6 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
             "name": "ctssb",
             "type": "debugpy",
@@ -20,11 +19,20 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "fine_tune_deepseek",
+            "name": "fine_tune_deepseek_ctssb",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/fine_tune/fine_tune_deepseek.py",
-            "console": "integratedTerminal"
+            "module": "fine_tune.fine_tune_deepseek_ctssb",
+            "console": "integratedTerminal",
+            "justMyCode":false
+        },
+        {
+            "name": "inference_deepseek_fine_tuned_ctssb",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fine_tune.inference_deepseek_fine_tuned_ctssb",
+            "console": "integratedTerminal",
+            "justMyCode":false
         }
     ]
 }
