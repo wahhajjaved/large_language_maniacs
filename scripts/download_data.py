@@ -19,7 +19,9 @@ CTSSB_TESTING_SAVE_DIR: pathlib.Path = pathlib.Path("downloaded_data/ctssb/testi
 DEFUNCT_PROJECTS_PATH: pathlib.Path = pathlib.Path("datasets/ctssb_data_1M/defunct_projects.jsonl")
 
 # add github token here for increased api rate limit
-token: str = "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"
+token: str = "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"
+
+FROM_CACHE_ONLY: bool = True
 
 
 def load_dataset_file(path: pathlib.Path) -> list:
@@ -57,6 +59,9 @@ def download_entry_concurrent(entry: dict[str, str], save_dir: pathlib.Path):
         cached = True
         return f"File {name} found in cached directory"
 
+    if FROM_CACHE_ONLY and not cached:
+        return f"File {name} not found in cached directory and not downloaded because downloading is disabled"
+
     try:
         if not before_filename.exists():
             cached = False
@@ -91,7 +96,7 @@ def download_entry_concurrent(entry: dict[str, str], save_dir: pathlib.Path):
             print(
                 f"Rate limit hit. X-RateLimit-Limit = {e.response.headers['X-RateLimit-Limit']}, "
                 f"X-RateLimit-Remaining = {e.response.headers['X-RateLimit-Remaining']}, "
-                f"Rate limit resets in {reset_in/60} minutes"
+                f"Rate limit resets in {reset_in/60} minutes. "
             )
             os._exit(1)
         else:

@@ -33,6 +33,14 @@
             "module": "fine_tune.inference_deepseek_fine_tuned_ctssb",
             "console": "integratedTerminal",
             "justMyCode":false
+        },
+        {
+            "name": "ctssb_to_jsonl",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.ctssb_to_jsonl",
+            "console": "integratedTerminal",
+            "justMyCode":false
         }
     ]
 }
