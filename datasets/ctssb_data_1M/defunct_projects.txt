@@ -1,5 +1,0 @@
-instrumented-ceilometer
-python-telegram-bot
-feincms
-openxc-vehicle-simulator
-repoman
