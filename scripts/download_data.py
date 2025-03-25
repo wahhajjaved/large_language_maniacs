@@ -19,7 +19,7 @@ CTSSB_TESTING_SAVE_DIR: pathlib.Path = pathlib.Path("downloaded_data/ctssb/testi
 DEFUNCT_PROJECTS_PATH: pathlib.Path = pathlib.Path("datasets/ctssb_data_1M/defunct_projects.jsonl")
 
 # add github token here for increased api rate limit
-token: str = "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"
+token: str = "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"
 
 FROM_CACHE_ONLY: bool = True
 

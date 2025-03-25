@@ -111,8 +111,9 @@ def pool_wrapper(
     dataset: list[dict[str, str]],
     entries: list[tuple[str, str]],
     entry_type: typing.Literal["training", "validation", "testing"],
-):
-    with concurrent.futures.ProcessPoolExecutor(max_workers=24) as executor:
+) -> int:
+    errors_detected = 0
+    with concurrent.futures.ProcessPoolExecutor(max_workers=20) as executor:
         futures = {}
         for entry_metadata in dataset:
             future = executor.submit(create_entry, entry_metadata, entry_type)
@@ -129,31 +130,46 @@ def pool_wrapper(
                 entries.append((before_function_text, after_function_text))
 
             except SyntaxError as e:
+                errors_detected += 1
                 entry_metadata = futures[future]
                 print(f"Could not parse {entry_metadata['project']}_{entry_metadata['commit_sha']}")
+                print(e)
                 with open(DEFUNCT_PROJECTS_PATH, "a") as f:
                     f.write(json.dumps(entry_metadata) + "\n")
             except FileNotFoundError as e:
+                errors_detected += 1
                 print(e)
-                # executor.shutdown(cancel_futures=True)
-                # break
+            except Exception as e:
+                errors_detected += 1
+                print(e)
+
+    return errors_detected
 
 
 def process_data_concurrently():
+    testing_errors = 0
+    validation_errors = 0
+    training_errors = 0
+
     testing_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TESTING)
     testing_dataset_entries: list[tuple[str, str]] = []
-    pool_wrapper(testing_dataset[START_AT_TESTING:], testing_dataset_entries, "testing")
+    testing_errors = pool_wrapper(testing_dataset[START_AT_TESTING:], testing_dataset_entries, "testing")
     save_dataset_as_jsonl_2(testing_dataset_entries, CTSSB_TESTING_DATASET)
 
     # validation_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_VALIDATION)
     # validation_dataset_entries: list[tuple[str, str]] = []
-    # pool_wrapper(validation_dataset, validation_dataset_entries, "validation")
+    # validation_errors = pool_wrapper(validation_dataset[START_AT_VALIDATION:], validation_dataset_entries, "validation")
     # save_dataset_as_jsonl_2(validation_dataset_entries, CTSSB_VALIDATION_DATASET)
 
     # training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING)
     # training_dataset_entries: list[tuple[str, str]] = []
-    # pool_wrapper(training_dataset, training_dataset_entries, "training")
+    # training_errors = pool_wrapper(training_dataset[START_AT_TRAINING:], training_dataset_entries, "training")
     # save_dataset_as_jsonl_2(training_dataset_entries, CTSSB_TRAINING_DATASET)
+
+    print(f"\n\nDatasets converted to jsonl.")
+    print(f"{testing_errors=}")
+    print(f"{validation_errors=}")
+    print(f"{training_errors=}")
 
 
 def save_dataset_as_jsonl(data: list[DatasetEntry], save_location):
@@ -190,8 +206,8 @@ def process_data_sequentially():
     for line in validation_dataset:
         try:
             validation_dataset_entries.append(DatasetEntry(entry_metadata=line, entry_type="validation"))
-        except SyntaxError:
-            print(f"Could not parse {line['project']}_{line['commit_sha']}")
+        except SyntaxError as e:
+            print(f"Could not parse {line['project']}_{line['commit_sha']}. {e}")
             with open(DEFUNCT_PROJECTS_PATH, "a") as f:
                 f.write(json.dumps(line) + "\n")
         except FileNotFoundError as e:
@@ -217,6 +233,7 @@ def process_data_sequentially():
 def main():
     process_data_concurrently()
     # process_data_sequentially()
+    print()
 
 
 if __name__ == "__main__":
