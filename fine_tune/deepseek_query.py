@@ -16,8 +16,8 @@ class DeepseekQuery:
     @property
     def query(self):
         return {
-            "prompt": f"{self.before_file}",
-            "completion": f"{self.after_file}",
+            "input": f"{self.before_file}",
+            "output": f"{self.after_file}",
         }
 
     @property
