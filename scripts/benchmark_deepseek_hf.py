@@ -12,8 +12,9 @@ from codebleu import calc_codebleu
 # -------------------------------
 MODEL_NAME = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
 DATASET_PATH = "iberu/PySStuBs"
-BATCH_SIZE = 8
-MAX_NEW_TOKENS = 4096
+BATCH_SIZE = 10
+MAX_NEW_TOKENS = 1024
+#DEVICE = "cpu"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MAX_DEBUG = 100
 
@@ -55,7 +56,7 @@ model.eval()
 # Load dataset (debug mode)
 # -------------------------------
 print("📦 Loading dataset...")
-dataset = load_dataset(DATASET_PATH, split="train[:10%]")
+dataset = load_dataset(DATASET_PATH, split="train[:100%]")
 
 # -------------------------------
 # Metric tools
@@ -87,6 +88,8 @@ for i in tqdm(range(0, len(dataset), BATCH_SIZE)):
     refs = batch["output"]
 
     # Tokenize + infer
+    #inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
+    #inputs = {k: v.to("cpu") for k, v in inputs.items()}
     inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
     with torch.no_grad():
         outputs = model.generate(**inputs, max_new_tokens=MAX_NEW_TOKENS, do_sample=False)
