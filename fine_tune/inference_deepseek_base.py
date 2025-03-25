@@ -17,13 +17,13 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from deepseek_query import DeepseekQuery
 
-TRAINING_DATASSET_DIR = pathlib.Path("datasets/ctssb_prepared_dataset_testing.jsonl")
-
+TESTING_DATASET_DIR = pathlib.Path("datasets/ctssb_prepared_dataset_testing.jsonl")
+dataset = load_dataset("json", data_files=TESTING_DATASET_DIR)
 
 def prepare_queries() -> list[DeepseekQuery]:
     queries: list[DeepseekQuery] = []
 
-    before_file_names = TRAINING_DATASSET_DIR.glob("*_before.py")
+    before_file_names = TESTING_DATASET_DIR.glob("*_before.py")
     for before_file_name in before_file_names:
         after_file_name = before_file_name.with_stem(before_file_name.stem.replace("_before", "_after"))
         with open(before_file_name) as f:
