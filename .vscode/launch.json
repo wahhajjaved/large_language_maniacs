@@ -27,6 +27,14 @@
             "justMyCode":false
         },
         {
+            "name": "inference_deepseek_base",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fine_tune.inference_deepseek_base",
+            "console": "integratedTerminal",
+            "justMyCode":false
+        },
+        {
             "name": "fine_tune_deepseek_ctssb",
             "type": "debugpy",
             "request": "launch",
