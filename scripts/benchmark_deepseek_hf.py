@@ -23,14 +23,15 @@ MAX_DEBUG = 100
 def extract_corrected_code(text: str) -> str:
     """
     Extracts only the corrected code block following the instruction marker.
-    Removes any extra trailing annotations or duplicate blocks.
+    Keeps inline comments and ensures complete function extraction.
     """
     split_marker = "# Provide only the corrected code below (no explanation, comments, or extra copies):"
     if split_marker in text:
         after = text.split(split_marker, 1)[1]
-        # Strip off trailing comment blocks like "# Corrected code:"
-        after = re.split(r"\n\s*#\s*", after, maxsplit=1)[0]
-        return after.strip()
+        # Remove leading/trailing quotes or whitespace
+        after = after.strip().strip("`").strip()
+        return after
+
     return text.strip()
 
 # -------------------------------
