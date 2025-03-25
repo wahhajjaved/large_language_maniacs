@@ -62,10 +62,11 @@ def main():
 
     for query in dataset:
         inputs = tokenizer(
-            (q.inference_query for q in queries),
+            # (q.inference_query for q in queries),
             # write a hello world program in python",
             # add_generation_prompt = True,
-            query.before_file,
+            query["input"],
+            # query.before_file,
             return_tensors="pt",
         ).to(model.device)
         # tokenizer.eos_token_id is the id of <｜end▁of▁sentence｜>  token
