@@ -1,6 +1,8 @@
 import pathlib
 import sys
 import os
+import evaluate
+import Levenshtein
 
 def getModelsPath():
     script_dir = pathlib.Path(__file__).resolve().parent
@@ -13,9 +15,9 @@ os.environ["HF_HOME"] = str(model_dir.absolute())
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from fine_tune.deepseek_query import DeepseekQuery
+from deepseek_query import DeepseekQuery
 
-TRAINING_DATASSET_DIR = pathlib.Path("downloaded_data/ctssb")
+TRAINING_DATASSET_DIR = pathlib.Path("datasets/ctssb_prepared_dataset_testing.jsonl")
 
 
 def prepare_queries() -> list[DeepseekQuery]:
@@ -52,24 +54,50 @@ def main():
         torch_dtype=torch.bfloat16,
     ).cuda()
 
-    inputs = tokenizer(
-        #(q.inference_query for q in queries),
-        "# write a hello world program in python",
-        #add_generation_prompt=True,
-        return_tensors="pt",
-    ).to(model.device)
-    # tokenizer.eos_token_id is the id of <｜end▁of▁sentence｜>  token
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=512,
-        do_sample=False,
-        top_k=50,
-        top_p=0.95,
-        num_return_sequences=1,
-        eos_token_id=tokenizer.eos_token_id,
-    )
-    print(tokenizer.decode(outputs[0][len(inputs[0]) :], skip_special_tokens=True))
+    bleu = evaluate.load("bleu")
+    total_exact = 0
+    total_edit_distance = 0
+    generations = []
+    references = []
 
+    for query in queries:
+        inputs = tokenizer(
+            (q.inference_query for q in queries),
+            # write a hello world program in python",
+            # add_generation_prompt = True,
+            query.before_file,
+            return_tensors="pt",
+        ).to(model.device)
+        # tokenizer.eos_token_id is the id of <｜end▁of▁sentence｜>  token
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=512,
+            do_sample=False,
+            top_k=50,
+            top_p=0.95,
+            num_return_sequences=1,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+        prediction = tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
+        reference = query.after_file.strip()
+
+        generations.append(prediction)
+        references.append([reference])
+
+        if prediction == reference:
+            total += 1
+
+        total_edit_distance += Levenshtein.distance(prediction, reference)
+
+    bleu_score = bleu.compute(predictions=generations, references= references)
+    avg_edit_distance = total_edit_distance / len(queries)
+    exact_match = total_exact / len(queries)
+
+    print(f"\n Evaluation Results:")
+    print(f" Exact Match Accuracy: {exact_match: .2%}")
+    print(f" Average Levenshtein Distance: {avg_edit_distance: .2f}")
+    print(f"BLEU Score: {bleu_score['bleu']:.4f}")
+    
 
 if __name__ == "__main__":
     main()
