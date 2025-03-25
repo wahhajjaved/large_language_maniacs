@@ -1,0 +1,2253 @@
+# -*- coding: utf-8 -*-
+
+"""
+This file contains the QuDi main GUI for pulsed measurements.
+
+QuDi is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+QuDi is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with QuDi. If not, see <http://www.gnu.org/licenses/>.
+
+Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
+top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+"""
+
+from qtpy import QtGui
+from qtpy import QtCore
+from qtpy import QtWidgets
+from qtpy import uic
+import numpy as np
+import os
+from collections import OrderedDict
+import pyqtgraph as pg
+import re
+import inspect
+import datetime
+
+
+from gui.guibase import GUIBase
+from gui.colordefs import QudiPalettePale as palette
+from gui.colordefs import QudiPalette as palettedark
+from qtwidgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
+#from gui.pulsed.pulse_editor import PulseEditor
+from core.util.mutex import Mutex
+from core.util import units
+from gui.pulsed.pulse_editors import BlockEditor, BlockOrganizer
+from logic.sampling_functions import SamplingFunctions
+
+
+#FIXME: Display the Pulse
+#FIXME: save the length in sample points (bins)
+#FIXME: adjust the length to the bins
+#FIXME: Later that should be able to round up the values directly within
+
+
+class PulsedMeasurementMainWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, 'ui_pulsed_maingui.ui')
+
+        # Load it
+        super(PulsedMeasurementMainWindow, self).__init__()
+
+        uic.loadUi(ui_file, self)
+        self.show()
+
+
+class PulseAnalysisTab(QtWidgets.QWidget):
+    def __init__(self):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, 'ui_pulse_analysis.ui')
+        # Load it
+        super().__init__()
+        uic.loadUi(ui_file, self)
+
+
+class PulseGeneratorTab(QtWidgets.QWidget):
+    def __init__(self):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, 'ui_pulse_editor.ui')
+        # Load it
+        super().__init__()
+        uic.loadUi(ui_file, self)
+
+
+class PulseExtractionTab(QtWidgets.QWidget):
+    def __init__(self):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, 'ui_pulse_extraction.ui')
+        # Load it
+        super().__init__()
+        uic.loadUi(ui_file, self)
+
+
+class AnalysisSettingDialog(QtWidgets.QDialog):
+    def __init__(self):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, 'ui_pulsed_main_gui_settings_analysis.ui')
+
+        # Load it
+        super().__init__()
+
+        uic.loadUi(ui_file, self)
+
+
+class GeneratorSettingsDialog(QtWidgets.QDialog):
+    def __init__(self):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, 'ui_pulsed_main_gui_settings_block_gen.ui')
+
+        # Load it
+        super().__init__()
+
+        uic.loadUi(ui_file, self)
+
+
+class PredefinedMethodsTab(QtWidgets.QWidget):
+    def __init__(self):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, 'ui_predefined_methods.ui')
+
+        # Load it
+        super().__init__()
+
+        uic.loadUi(ui_file, self)
+
+class PredefinedMethodsConfigDialog(QtWidgets.QDialog):
+    def __init__(self):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, 'ui_predefined_methods_config.ui')
+
+        # Load it
+        super().__init__()
+
+        uic.loadUi(ui_file, self)
+
+
+class PulsedMeasurementGui(GUIBase):
+    """ This is the main GUI Class for pulsed measurements. """
+
+    _modclass = 'PulsedMeasurementGui'
+    _modtype = 'gui'
+
+    ## declare connectors
+    _in = {'pulsedmasterlogic': 'PulsedMasterLogic',
+           'savelogic': 'SaveLogic'}
+
+    def __init__(self, config, **kwargs):
+        super().__init__(config=config, **kwargs)
+
+        self.log.info('The following configuration was found.')
+
+        # checking for the right configuration
+        for key in config.keys():
+            self.log.info('{}: {}'.format(key,config[key]))
+
+        # that variable is for testing issues and can be deleted if not needed:
+        self._write_chunkwise = False
+
+    def on_activate(self, e=None):
+        """ Initialize, connect and configure the pulsed measurement GUI.
+
+        @param object e: Fysom.event object from Fysom class.
+                         An object created by the state machine module Fysom,
+                         which is connected to a specific event (have a look in
+                         the Base Class). This object contains the passed event,
+                         the state before the event happened and the destination
+                         of the state which should be reached after the event
+                         had happened.
+
+        Establish general connectivity and activate the different tabs of the
+        GUI.
+        """
+        self._pulsed_master_logic = self.get_in_connector('pulsedmasterlogic')
+        self._save_logic = self.get_in_connector('savelogic')
+
+        self._mw = PulsedMeasurementMainWindow()
+        self._pa = PulseAnalysisTab()
+        self._pg = PulseGeneratorTab()
+        self._pe = PulseExtractionTab()
+        self._pm = PredefinedMethodsTab()
+
+        self._mw.tabWidget.addTab(self._pa, 'Analysis')
+        self._mw.tabWidget.addTab(self._pe, 'Pulse Extraction')
+        self._mw.tabWidget.addTab(self._pg, 'Pulse Generator')
+        self._mw.tabWidget.addTab(self._pm, 'Predefined Methods')
+
+        self.setup_toolbar()
+        self._activate_analysis_settings_ui(e)
+        self._activate_analysis_ui(e)
+        self.setup_extraction_ui()
+
+        self._activate_generator_settings_ui(e)
+        self._activate_pulse_generator_ui(e)
+
+        self.show()
+
+    def on_deactivate(self, e):
+        """ Undo the Definition, configuration and initialisation of the pulsed
+            measurement GUI.
+
+        @param object e: Fysom.event object from Fysom class. A more detailed
+                         explanation can be found in the method initUI.
+
+        This deactivation disconnects all the graphic modules, which were
+        connected in the initUI method.
+        """
+        self._deactivate_analysis_settings_ui(e)
+        self._deactivate_analysis_ui(e)
+
+        self._deactivate_generator_settings_ui(e)
+        self._deactivate_pulse_generator_ui(e)
+
+        self._mw.close()
+
+    def show(self):
+        """Make main window visible and put it above all other windows. """
+        QtWidgets.QMainWindow.show(self._mw)
+        self._mw.activateWindow()
+        self._mw.raise_()
+
+    ###########################################################################
+    ###   Methods related to Settings for the 'Pulse Generator' tab:        ###
+    ###########################################################################
+    def _activate_generator_settings_ui(self, e):
+        """ Initialize, connect and configure the pulse generator settings to be displayed in the
+        editor.
+
+        @param object e: Fysom.event object from Fysom class. A more detailed
+                         explanation can be found in the method initUI.
+        """
+        self._gs = GeneratorSettingsDialog()
+        self._gs.accepted.connect(self.apply_generator_settings)
+        self._gs.rejected.connect(self.keep_former_generator_settings)
+        self._gs.sampled_file_format_comboBox.currentIndexChanged.connect(
+            self.generator_settings_changed, QtCore.Qt.QueuedConnection)
+        self._gs.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
+            self.apply_generator_settings)
+        # Here the names of all function to show are stored
+        self._functions_to_show = []
+
+        # here are all the names of the predefined methods are saved.
+        self._predefined_methods_list = []
+        # here all names of the chosen predefined methods are saved
+        self._predefined_methods_to_show = []
+        # create a config for the predefined methods:
+        self._pm_cfg = PredefinedMethodsConfigDialog()
+        self._pm_cfg.accepted.connect(self.apply_predefined_methods_config)
+        self._pm_cfg.rejected.connect(self.keep_former_predefined_methods_config)
+        self._pm_cfg.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
+            self.apply_predefined_methods_config)
+
+        if 'predefined_methods_to_show' in self._statusVariables:
+            self._predefined_methods_to_show = self._statusVariables['predefined_methods_to_show']
+        if 'functions_to_show' in self._statusVariables:
+            self._functions_to_show = self._statusVariables['functions_to_show']
+
+        # connect the menu to the actions:
+        self._mw.action_Settings_Block_Generation.triggered.connect(self.show_generator_settings)
+        self._mw.action_Predefined_Methods_Config.triggered.connect(self.show_predefined_methods_config)
+
+        self._pulsed_master_logic.sigPredefinedSequencesUpdated.connect(self.predefined_methods_changed)
+
+        # Create function config dialog
+        self._create_function_config()
+        return
+
+    def _deactivate_generator_settings_ui(self, e):
+        """ Disconnects the configuration of the Settings for the 'Pulse Generator' Tab.
+
+        @param object e: Fysom.event object from Fysom class. A more detailed
+                         explanation can be found in the method initUI.
+        """
+        self._statusVariables['predefined_methods_to_show'] = self._predefined_methods_to_show
+        self._statusVariables['functions_to_show'] = self._functions_to_show
+
+        self._gs.accepted.disconnect()
+        self._gs.rejected.disconnect()
+        self._gs.sampled_file_format_comboBox.currentIndexChanged.disconnect()
+        self._gs.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.disconnect()
+        self._gs.close()
+
+        self._pm_cfg.accepted.disconnect()
+        self._pm_cfg.rejected.disconnect()
+        self._pm_cfg.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.disconnect()
+        self._pm_cfg.close()
+
+
+        self._pulsed_master_logic.sigPredefinedSequencesUpdated.disconnect()
+        self._mw.action_Settings_Block_Generation.triggered.disconnect()
+        self._mw.action_Predefined_Methods_Config.triggered.disconnect()
+        return
+
+    def show_generator_settings(self):
+        """
+        Opens the generator settings menu.
+        """
+        self._gs.exec_()
+        return
+
+    def _create_function_config(self):
+        # Add in the settings menu within the groupbox widget all the available math_functions,
+        # based on the list from the Logic. Right now, the GUI objects are inserted the 'hard' way,
+        # like it is done in the Qt-Designer.
+        # FIXME: Make a nicer way of displaying the available functions, maybe with a Table!
+        _encoding = QtWidgets.QApplication.UnicodeUTF8
+        objectname = self._gs.objectName()
+        for index, func_name in enumerate(list(SamplingFunctions().func_config)):
+            name_label = 'func_' + str(index)
+            setattr(self._gs, name_label, QtWidgets.QLabel(self._gs.groupBox))
+            label = getattr(self._gs, name_label)
+            label.setObjectName(name_label)
+            self._gs.gridLayout_3.addWidget(label, index, 0, 1, 1)
+            label.setText(QtWidgets.QApplication.translate(objectname, func_name, None, _encoding))
+
+            name_checkbox = 'checkbox_' + str(index)
+            setattr(self._gs, name_checkbox, QtWidgets.QCheckBox(self._gs.groupBox))
+            checkbox = getattr(self._gs, name_checkbox)
+            checkbox.setObjectName(name_checkbox)
+            self._gs.gridLayout_3.addWidget(checkbox, index, 1, 1, 1)
+            checkbox.setText(QtWidgets.QApplication.translate(objectname, '', None, _encoding))
+        # Check all functions that are in the _functions_to_show list.
+        # If no such list is present take the first 3 functions as default
+        if len(self._functions_to_show) > 0:
+            for func in self._functions_to_show:
+                index = list(SamplingFunctions().func_config).index(func)
+                name_checkbox = 'checkbox_' + str(index)
+                checkbox = getattr(self._gs, name_checkbox)
+                checkbox.setCheckState(QtCore.Qt.Checked)
+        else:
+            for index in range(3):
+                name_checkbox = 'checkbox_' + str(index)
+                checkbox = getattr(self._gs, name_checkbox)
+                checkbox.setCheckState(QtCore.Qt.Checked)
+        return
+
+    def apply_generator_settings(self):
+        """
+        Write new generator settings from the gui to the file.
+        """
+        new_config = SamplingFunctions().func_config
+        for index, func_name in enumerate(list(SamplingFunctions().func_config)):
+            name_checkbox = 'checkbox_' + str(index)
+            checkbox = getattr(self._gs, name_checkbox)
+            if not checkbox.isChecked():
+                name_label = 'func_' + str(index)
+                func = getattr(self._gs, name_label)
+                del new_config[func.text()]
+        self._functions_to_show = list(new_config)
+        if self.block_editor.function_config != new_config:
+            self.block_editor.set_function_config(new_config)
+        return
+
+    def keep_former_generator_settings(self):
+        """
+        Keep the old generator settings and restores them in the gui.
+        """
+        old_config = self.block_editor.function_config
+        for index, func_name in enumerate(list(SamplingFunctions().func_config)):
+            name_checkbox = 'checkbox_' + str(index)
+            checkbox = getattr(self._gs, name_checkbox)
+            if func_name in old_config:
+                checkbox.setChecked(True)
+            else:
+                checkbox.setChecked(False)
+        return
+
+    def show_predefined_methods_config(self):
+        """ Opens the Window for the config of predefined methods."""
+        self._pm_cfg.show()
+        self._pm_cfg.raise_()
+
+    def predefined_methods_changed(self, methods_dict):
+        """
+
+        @param methods_dict:
+        @return:
+        """
+        self._predefined_methods_list = list(methods_dict)
+        # create all GUI elements
+        self._create_predefined_methods(methods_dict)
+        # check all checkboxes that correspond to the methods to show in the config dialogue
+        for method_name in self._predefined_methods_to_show:
+            if method_name in self._predefined_methods_list:
+                index = self._predefined_methods_list.index(method_name)
+                checkbox = getattr(self._pm_cfg, 'checkbox_' + str(index))
+                checkbox.setChecked(True)
+            else:
+                del_index = self._predefined_methods_to_show.index(method_name)
+                del self._predefined_methods_to_show[del_index]
+        # apply the chosen methods to the methods dialogue
+        self.apply_predefined_methods_config()
+        return
+
+    def _create_predefined_methods(self, methods_dict):
+        """
+        Initializes the GUI elements for the predefined methods and the corresponding config
+
+        @param methods_dict:
+        @return:
+        """
+        for index, method_name in enumerate(list(methods_dict)):
+            # create checkboxes for the config dialogue
+            name_checkbox = 'checkbox_' + str(index)
+            setattr(self._pm_cfg, name_checkbox, QtWidgets.QCheckBox(self._pm_cfg.scrollArea))
+            checkbox = getattr(self._pm_cfg, name_checkbox)
+            checkbox.setObjectName(name_checkbox)
+            checkbox.setText(method_name)
+            checkbox.setChecked(False)
+            self._pm_cfg.verticalLayout.addWidget(checkbox)
+
+            # Create the widgets for the predefined methods dialogue
+            # Create GroupBox for the method to reside in
+            groupBox = QtWidgets.QGroupBox(self._pm)
+            groupBox.setAlignment(QtCore.Qt.AlignLeft)
+            groupBox.setTitle(method_name)
+            # Create layout within the GroupBox
+            gridLayout = QtWidgets.QGridLayout(groupBox)
+            # Create generate buttons
+            gen_button = QtWidgets.QPushButton(groupBox)
+            gen_button.setText('Generate')
+            gen_button.setObjectName('gen_' + method_name)
+            gen_button.clicked.connect(self.generate_predefined_clicked)
+            sauplo_button = QtWidgets.QPushButton(groupBox)
+            sauplo_button.setText('GenSaUpLo')
+            sauplo_button.setObjectName('sauplo_' + method_name)
+            sauplo_button.clicked.connect(self.generate_sauplo_predefined_clicked)
+            # inspect current method to extract the parameters
+            inspected = inspect.signature(methods_dict[method_name])
+            # run through all parameters of the current method and create the widgets
+            for param_index, param_name in enumerate(inspected.parameters):
+                # get default value of the parameter
+                default_val = inspected.parameters[param_name].default
+                if default_val is inspect._empty:
+                    self.log.error('The method "{0}" in the logic has an argument "{1}" without a '
+                                   'default value!\nAssign a default value to that, otherwise a '
+                                   'type estimation is not possible!\nCreation of the viewbox '
+                                   'aborted.'.format('generate_' + method_name, param_name))
+                    return
+                # create a label for the parameter
+                param_label = QtWidgets.QLabel(groupBox)
+                param_label.setText(param_name)
+                # create proper input widget for the parameter depending on the type of default_val
+                if type(default_val) is bool:
+                    input_obj = QtWidgets.QCheckBox(groupBox)
+                    input_obj.setChecked(default_val)
+                elif type(default_val) is float:
+                    input_obj = ScienDSpinBox(groupBox)
+                    input_obj.setMaximum(np.inf)
+                    input_obj.setMinimum(-np.inf)
+                    if 'amp' in param_name:
+                        input_obj.setSuffix('V')
+                    elif 'freq' in param_name:
+                        input_obj.setSuffix('Hz')
+                    elif 'length' in param_name or 'time' in param_name or 'period' in param_name or 'tau' in param_name:
+                        input_obj.setSuffix('s')
+                    input_obj.setMinimumSize(QtCore.QSize(80, 0))
+                    input_obj.setValue(default_val)
+                elif type(default_val) is int:
+                    input_obj = ScienSpinBox(groupBox)
+                    input_obj.setMaximum(2**31 - 1)
+                    input_obj.setMinimum(-2**31 + 1)
+                    input_obj.setValue(default_val)
+                elif type(default_val) is str:
+                    input_obj = QtWidgets.QLineEdit(groupBox)
+                    input_obj.setMinimumSize(QtCore.QSize(80, 0))
+                    input_obj.setText(default_val)
+                else:
+                    self.log.error('The method "{0}" in the logic has an argument "{1}" with is not'
+                                   ' of the valid types str, float, int or bool!\nChoose one of '
+                                   'those default values! Creation of the viewbox aborted.'
+                                   ''.format('generate_' + method_name, param_name))
+                gridLayout.addWidget(param_label, 0, param_index, 1, 1)
+                gridLayout.addWidget(input_obj, 1, param_index, 1, 1)
+                setattr(self._pm, method_name + '_param_' + str(param_index) + '_Widget', input_obj)
+
+            gridLayout.addWidget(gen_button, 0, len(inspected.parameters), 1, 1)
+            gridLayout.addWidget(sauplo_button, 1, len(inspected.parameters), 1, 1)
+            # attach the GroupBox widget to the predefined methods widget.
+            setattr(self._pm, method_name + '_GroupBox', groupBox)
+            self._pm.verticalLayout.addWidget(groupBox)
+        return
+
+    def keep_former_predefined_methods_config(self):
+        for index, name in enumerate(self._predefined_methods_list):
+            groupbox = getattr(self._pm, name + '_GroupBox')
+            checkbox = getattr(self._pm_cfg, 'checkbox_' + str(index))
+            checkbox.setChecked(groupbox.isVisible())
+        return
+
+    def apply_predefined_methods_config(self):
+        self._predefined_methods_to_show = []
+        for index, name in enumerate(self._predefined_methods_list):
+            groupbox = getattr(self._pm, name + '_GroupBox')
+            checkbox = getattr(self._pm_cfg, 'checkbox_' + str(index))
+            is_checked = checkbox.isChecked()
+            groupbox.setVisible(is_checked)
+            if is_checked:
+                self._predefined_methods_to_show.append(name)
+
+        self._pm.hintLabel.setVisible(len(self._predefined_methods_to_show) == 0)
+        return
+
+    ###########################################################################
+    ###   Methods related to Tab 'Pulse Generator' in the Pulsed Window:    ###
+    ###########################################################################
+    def _activate_pulse_generator_ui(self, e):
+        """ Initialize, connect and configure the 'Pulse Generator' Tab.
+
+        @param object e: Fysom.event object from Fysom class. A more detailed
+                         explanation can be found in the method initUI.
+        """
+        # connect signals of input widgets
+        self._pg.gen_sample_freq_DSpinBox.editingFinished.connect(self.generator_settings_changed, QtCore.Qt.QueuedConnection)
+        self._pg.gen_laserchannel_ComboBox.currentIndexChanged.connect(self.generator_settings_changed, QtCore.Qt.QueuedConnection)
+        self._pg.gen_activation_config_ComboBox.currentIndexChanged.connect(self.generator_settings_changed, QtCore.Qt.QueuedConnection)
+        # connect signals of buttons
+        self._pg.sample_ensemble_PushButton.clicked.connect(self.sample_ensemble_clicked)
+        # self._pg.sample_sequence_PushButton.clicked.connect(self.sample_sequence_clicked)
+        self._pg.sauplo_ensemble_PushButton.clicked.connect(self.sauplo_ensemble_clicked)
+
+        self._pg.block_add_last_PushButton.clicked.connect(self.block_add_last_clicked)
+        self._pg.block_del_last_PushButton.clicked.connect(self.block_del_last_clicked)
+        self._pg.block_add_sel_PushButton.clicked.connect(self.block_add_sel_clicked)
+        self._pg.block_del_sel_PushButton.clicked.connect(self.block_del_sel_clicked)
+        self._pg.block_clear_PushButton.clicked.connect(self.block_clear_clicked)
+        self._pg.organizer_add_last_PushButton.clicked.connect(self.organizer_add_last_clicked)
+        self._pg.organizer_del_last_PushButton.clicked.connect(self.organizer_del_last_clicked)
+        self._pg.organizer_add_sel_PushButton.clicked.connect(self.organizer_add_sel_clicked)
+        self._pg.organizer_del_sel_PushButton.clicked.connect(self.organizer_del_sel_clicked)
+        self._pg.organizer_clear_PushButton.clicked.connect(self.organizer_clear_clicked)
+
+        self._pg.curr_block_generate_PushButton.clicked.connect(self.editor_generate_block_clicked)
+        self._pg.curr_block_del_PushButton.clicked.connect(self.editor_delete_block_clicked)
+        self._pg.curr_block_load_PushButton.clicked.connect(self.editor_load_block_clicked)
+        self._pg.curr_ensemble_generate_PushButton.clicked.connect(self.editor_generate_ensemble_clicked)
+        self._pg.curr_ensemble_del_PushButton.clicked.connect(self.editor_delete_ensemble_clicked)
+        self._pg.curr_ensemble_load_PushButton.clicked.connect(self.editor_load_ensemble_clicked)
+
+        # connect update signals from pulsed_master_logic
+        self._pulsed_master_logic.sigBlockEnsembleSampled.connect(self.sample_ensemble_finished)
+        # self._pulsed_master_logic.sigSequenceSampled.connect(self.sample_sequence_finished)
+        self._pulsed_master_logic.sigSavedPulseBlocksUpdated.connect(self.update_block_dict)
+        self._pulsed_master_logic.sigSavedBlockEnsemblesUpdated.connect(self.update_ensemble_dict)
+        # self._pulsed_master_logic.sigSavedSequencesUpdated.connect(self.update_sequence_list)
+        self._pulsed_master_logic.sigGeneratorSettingsUpdated.connect(self.update_generator_settings)
+
+        self._pulsed_master_logic.sigCurrentPulseBlockUpdated.connect(self.load_block_in_editor)
+        self._pulsed_master_logic.sigCurrentBlockEnsembleUpdated.connect(self.load_ensemble_in_editor)
+        # self._pulsed_master_logic.sigCurrentSequenceUpdated.connect(self.)
+
+        self.block_organizer = BlockOrganizer(self._pg.block_organizer_TableWidget)
+        self.block_editor = BlockEditor(self._pg.block_editor_TableWidget)
+
+        # Apply hardware constraints to input widgets
+        self._gen_apply_hardware_constraints()
+
+        # Fill initial values from logic into input widgets
+        self._pulsed_master_logic.request_generator_init_values()
+        return
+
+    def _deactivate_pulse_generator_ui(self, e):
+        """ Disconnects the configuration for 'Pulse Generator Tab.
+
+        @param object e: Fysom.event object from Fysom class. A more detailed
+                         explanation can be found in the method initUI.
+        """
+        # disconnect signals of input widgets
+        self._pg.gen_sample_freq_DSpinBox.editingFinished.disconnect()
+        self._pg.gen_laserchannel_ComboBox.currentIndexChanged.disconnect()
+        self._pg.gen_activation_config_ComboBox.currentIndexChanged.disconnect()
+        # disconnect signals of buttons
+        self._pg.sample_ensemble_PushButton.clicked.disconnect()
+        # self._pg.sample_sequence_PushButton.clicked.disconnect()
+        self._pg.sauplo_ensemble_PushButton.clicked.disconnect()
+        self._pg.block_add_last_PushButton.clicked.disconnect()
+        self._pg.block_del_last_PushButton.clicked.disconnect()
+        self._pg.block_add_sel_PushButton.clicked.disconnect()
+        self._pg.block_del_sel_PushButton.clicked.disconnect()
+        self._pg.block_clear_PushButton.clicked.disconnect()
+        self._pg.organizer_add_last_PushButton.clicked.disconnect()
+        self._pg.organizer_del_last_PushButton.clicked.disconnect()
+        self._pg.organizer_add_sel_PushButton.clicked.disconnect()
+        self._pg.organizer_del_sel_PushButton.clicked.disconnect()
+        self._pg.organizer_clear_PushButton.clicked.disconnect()
+        self._pg.curr_block_generate_PushButton.clicked.disconnect()
+        self._pg.curr_block_del_PushButton.clicked.disconnect()
+        self._pg.curr_block_load_PushButton.clicked.disconnect()
+        self._pg.curr_ensemble_generate_PushButton.clicked.disconnect()
+        self._pg.curr_ensemble_del_PushButton.clicked.disconnect()
+        self._pg.curr_ensemble_load_PushButton.clicked.disconnect()
+        # disconnect update signals from pulsed_master_logic
+        self._pulsed_master_logic.sigBlockEnsembleSampled.disconnect()
+        # self._pulsed_master_logic.sigSequenceSampled.disconnect()
+        self._pulsed_master_logic.sigSavedPulseBlocksUpdated.disconnect()
+        self._pulsed_master_logic.sigSavedBlockEnsemblesUpdated.disconnect()
+        # self._pulsed_master_logic.sigSavedSequencesUpdated.disconnect()
+        self._pulsed_master_logic.sigGeneratorSettingsUpdated.disconnect()
+        self._pulsed_master_logic.sigCurrentPulseBlockUpdated.disconnect()
+        self._pulsed_master_logic.sigCurrentBlockEnsembleUpdated.disconnect()
+        # self._pulsed_master_logic.sigCurrentSequenceUpdated.disconnect()
+        return
+
+    def _gen_apply_hardware_constraints(self):
+        """
+        Retrieve the constraints from pulser hardware and apply these constraints to the pulse
+        generator GUI elements.
+        """
+        # block signals
+        self._pg.gen_activation_config_ComboBox.blockSignals(True)
+        self._pg.gen_sample_freq_DSpinBox.blockSignals(True)
+        # apply constraints
+        pulser_constr, dummy = self._pulsed_master_logic.get_hardware_constraints()
+        self._pg.gen_activation_config_ComboBox.addItems(list(pulser_constr['activation_config']))
+        self._pg.gen_sample_freq_DSpinBox.setMinimum(pulser_constr['sample_rate']['min'])
+        self._pg.gen_sample_freq_DSpinBox.setMaximum(pulser_constr['sample_rate']['max'])
+        # unblock signals
+        self._pg.gen_activation_config_ComboBox.blockSignals(False)
+        self._pg.gen_sample_freq_DSpinBox.blockSignals(False)
+        return
+
+    def generator_settings_changed(self):
+        """
+
+        @return:
+        """
+        sample_rate = self._pg.gen_sample_freq_DSpinBox.value()
+        laser_channel = self._pg.gen_laserchannel_ComboBox.currentText()
+        activation_config_name = self._pg.gen_activation_config_ComboBox.currentText()
+        amplitude_dict = self._pulsed_master_logic._generator_logic.amplitude_dict
+        sampling_format = self._gs.sampled_file_format_comboBox.currentText()
+
+        self._pulsed_master_logic.generator_settings_changed(activation_config_name, laser_channel,
+                                                             sample_rate, amplitude_dict,
+                                                             sampling_format)
+        return
+
+    def update_generator_settings(self, activation_config_name, activation_config, sample_rate,
+                                   amplitude_dict, laser_channel, sampling_format):
+        """
+
+        @param activation_config_name:
+        @param activation_config:
+        @param sample_rate:
+        @param amplitude_dict:
+        @param laser_channel:
+        @param sampling_format:
+        @return:
+        """
+        # block signals
+        self._pg.gen_sample_freq_DSpinBox.blockSignals(True)
+        self._pg.gen_laserchannel_ComboBox.blockSignals(True)
+        self._pg.gen_activation_config_ComboBox.blockSignals(True)
+        self._gs.sampled_file_format_comboBox.blockSignals(True)
+        # sampling format
+        index = self._gs.sampled_file_format_comboBox.findText(sampling_format)
+        self._gs.sampled_file_format_comboBox.setCurrentIndex(index)
+        # activation config
+        index = self._pg.gen_activation_config_ComboBox.findText(activation_config_name)
+        self._pg.gen_activation_config_ComboBox.setCurrentIndex(index)
+        display_str = ''
+        for chnl in activation_config:
+            display_str += chnl + ' | '
+        display_str = display_str[:-3]
+        self._pg.gen_activation_config_LineEdit.setText(display_str)
+        self._pg.gen_analog_channels_SpinBox.setValue(
+            len([chnl for chnl in activation_config if 'a_ch' in chnl]))
+        self._pg.gen_digital_channels_SpinBox.setValue(
+            len([chnl for chnl in activation_config if 'd_ch' in chnl]))
+        # laser channel
+        self._pg.gen_laserchannel_ComboBox.clear()
+        self._pg.gen_laserchannel_ComboBox.addItems(activation_config)
+        index = self._pg.gen_laserchannel_ComboBox.findText(laser_channel)
+        self._pg.gen_laserchannel_ComboBox.setCurrentIndex(index)
+        # sample rate
+        self._pg.gen_sample_freq_DSpinBox.setValue(sample_rate)
+        # set activation config in block editor
+        if self.block_editor.activation_config != activation_config:
+            if self.block_editor.activation_config is None:
+                self.block_editor.set_activation_config(activation_config)
+                self.apply_generator_settings()
+            else:
+                self.block_editor.set_activation_config(activation_config)
+        # unblock signals
+        self._gs.sampled_file_format_comboBox.blockSignals(False)
+        self._pg.gen_sample_freq_DSpinBox.blockSignals(False)
+        self._pg.gen_laserchannel_ComboBox.blockSignals(False)
+        self._pg.gen_activation_config_ComboBox.blockSignals(False)
+        return
+
+    def block_add_last_clicked(self):
+        """
+
+        @return:
+        """
+        self.block_editor.insert_rows(self._pg.block_editor_TableWidget.rowCount(), 1)
+        return
+
+    def block_del_last_clicked(self):
+        """
+
+        @return:
+        """
+        self.block_editor.delete_row(self._pg.block_editor_TableWidget.rowCount())
+        return
+
+    def block_add_sel_clicked(self):
+        """
+
+        @return:
+        """
+        index = self._pg.block_editor_TableWidget.currentRow()
+        self.block_editor.insert_rows(index + 1, 1)
+        return
+
+    def block_del_sel_clicked(self):
+        """
+
+        @return:
+        """
+        index = self._pg.block_editor_TableWidget.currentRow()
+        self.block_editor.delete_row(index)
+        return
+
+    def block_clear_clicked(self):
+        """
+
+        @return:
+        """
+        self.block_editor.clear_table()
+        return
+
+    def organizer_add_last_clicked(self):
+        """
+
+        @return:
+        """
+        self.block_organizer.insert_rows(self._pg.block_organizer_TableWidget.rowCount(), 1)
+        return
+
+    def organizer_del_last_clicked(self):
+        """
+
+        @return:
+        """
+        self.block_organizer.delete_row(self._pg.block_organizer_TableWidget.rowCount() - 1)
+        return
+
+    def organizer_add_sel_clicked(self):
+        """
+
+        @return:
+        """
+        index = self._pg.block_organizer_TableWidget.currentRow()
+        self.block_organizer.insert_rows(index + 1, 1)
+        return
+
+    def organizer_del_sel_clicked(self):
+        """
+
+        @return:
+        """
+        index = self._pg.block_organizer_TableWidget.currentRow()
+        self.block_organizer.delete_row(index)
+        return
+
+    def organizer_clear_clicked(self):
+        """
+
+        @return:
+        """
+        self.block_organizer.clear_table()
+        return
+
+    def editor_generate_block_clicked(self):
+        name = self._pg.curr_block_name_LineEdit.text()
+        if name == '':
+            self.log.error('No name has been entered for the PulseBlock to be generated.')
+            return
+        block_object = self.block_editor.generate_block_object(name)
+        self._pulsed_master_logic.save_pulse_block(name, block_object)
+        return
+
+    def editor_delete_block_clicked(self):
+        name = self._pg.saved_blocks_ComboBox.currentText()
+        self._pulsed_master_logic.delete_pulse_block(name)
+        return
+
+    def editor_load_block_clicked(self):
+        name = self._pg.saved_blocks_ComboBox.currentText()
+        self._pulsed_master_logic.load_pulse_block(name)
+        return
+
+    def editor_generate_ensemble_clicked(self):
+        name = self._pg.curr_ensemble_name_LineEdit.text()
+        if name == '':
+            self.log.error('No name has been entered for the PulseBlockEnsemble to be generated.')
+            return
+        rotating_frame = self._pg.curr_ensemble_rot_frame_CheckBox.isChecked()
+        ensemble_object = self.block_organizer.generate_ensemble_object(name, rotating_frame)
+        self._pulsed_master_logic.save_block_ensemble(name, ensemble_object)
+        return
+
+    def editor_delete_ensemble_clicked(self):
+        name = self._pg.saved_ensembles_ComboBox.currentText()
+        self._pulsed_master_logic.delete_block_ensemble(name)
+        return
+
+    def editor_load_ensemble_clicked(self):
+        name = self._pg.saved_ensembles_ComboBox.currentText()
+        self._pulsed_master_logic.load_block_ensemble(name)
+        return
+
+    def load_block_in_editor(self, block_obj):
+        self.block_editor.load_pulse_block(block_obj)
+        return
+
+    def load_ensemble_in_editor(self, ensemble_obj, ensemble_params):
+        self.block_organizer.load_pulse_block_ensemble(ensemble_obj)
+        if ensemble_params != {}:
+            self._pg.curr_ensemble_length_DSpinBox.setValue(ensemble_params['sequence_length'])
+            self._pg.curr_ensemble_bins_SpinBox.setValue(ensemble_params['sequence_length_bins'])
+            # FIXME: This is just a rough estimation of the waveform size in MB (only valid for AWG)
+            size_mb = (ensemble_params['sequence_length_bins'] * 5) / 1024**2
+            self._pg.curr_ensemble_size_DSpinBox.setValue(size_mb)
+            self._pg.curr_ensemble_laserpulses_SpinBox.setValue(ensemble_params['num_of_lasers'])
+        else:
+            self._pg.curr_ensemble_length_DSpinBox.setValue(0.0)
+            self._pg.curr_ensemble_bins_SpinBox.setValue(0)
+            self._pg.curr_ensemble_size_DSpinBox.setValue(0.0)
+            self._pg.curr_ensemble_laserpulses_SpinBox.setValue(0)
+        return
+
+    def update_block_dict(self, block_dict):
+        """
+
+        @param block_dict:
+        @return:
+        """
+        self.block_organizer.set_block_dict(block_dict)
+        self._pg.saved_blocks_ComboBox.blockSignals(True)
+        self._pg.saved_blocks_ComboBox.clear()
+        self._pg.saved_blocks_ComboBox.addItems(list(block_dict))
+        self._pg.saved_blocks_ComboBox.blockSignals(False)
+        return
+
+    def update_ensemble_dict(self, ensemble_dict):
+        """
+
+        @param ensemble_dict:
+        @return:
+        """
+        # block signals
+        self._pg.gen_ensemble_ComboBox.blockSignals(True)
+        self._pg.saved_ensembles_ComboBox.blockSignals(True)
+        # update gen_sequence_ComboBox items
+        self._pg.gen_ensemble_ComboBox.clear()
+        self._pg.gen_ensemble_ComboBox.addItems(list(ensemble_dict))
+        self._pg.saved_ensembles_ComboBox.clear()
+        self._pg.saved_ensembles_ComboBox.addItems(list(ensemble_dict))
+        # unblock signals
+        self._pg.gen_ensemble_ComboBox.blockSignals(False)
+        self._pg.saved_ensembles_ComboBox.blockSignals(False)
+        return
+
+    # def update_sequence_list(self, sequence_list):
+    #     """
+    #
+    #     @param sequence_list:
+    #     @return:
+    #     """
+    #     # block signals
+    #     self._pg.gen_sequence_ComboBox.blockSignals(True)
+    #     # update gen_sequence_ComboBox items
+    #     self._pg.gen_sequence_ComboBox.clear()
+    #     self._pg.gen_sequence_ComboBox.addItems(sequence_list)
+    #     # unblock signals
+    #     self._pg.gen_sequence_ComboBox.blockSignals(False)
+    #     return
+
+    def sample_ensemble_clicked(self):
+        """
+        This method is called when the user clicks on "sample"
+        """
+        # Get the ensemble name from the ComboBox
+        ensemble_name = self._pg.gen_ensemble_ComboBox.currentText()
+        # disable button
+        self._pg.sample_ensemble_PushButton.setEnabled(False)
+        # Sample the ensemble via logic module
+        self._pulsed_master_logic.sample_block_ensemble(ensemble_name, True, self._write_chunkwise)
+        return
+
+    def sample_ensemble_finished(self, ensemble_name):
+        """
+
+        @return:
+        """
+        # enable button
+        self._pg.sample_ensemble_PushButton.setEnabled(True)
+        return
+
+    def sauplo_ensemble_clicked(self):
+        """
+
+        @return:
+        """
+        # Get the ensemble name from the ComboBox
+        ensemble_name = self._pg.gen_ensemble_ComboBox.currentText()
+        # Get invoke settings CheckBox status
+        invoke_settings = self._pa.ana_param_invoke_settings_CheckBox.isChecked()
+        # disable button
+        self._pg.sample_ensemble_PushButton.setEnabled(False)
+        self._pg.upload_ensemble_PushButton.setEnabled(False)
+        self._pg.load_ensemble_PushButton.setEnabled(False)
+        # Sample the ensemble via logic module
+        self._pulsed_master_logic.sample_block_ensemble(ensemble_name, True, self._write_chunkwise,
+                                                        True, invoke_settings)
+        return
+
+    # def sample_sequence_clicked(self):
+    #     """
+    #     This method is called when the user clicks on "sample"
+    #     """
+    #     # Get the sequence name from the ComboBox
+    #     sequence_name = self._pg.gen_sequence_ComboBox.currentText()
+    #     # Sample the sequence via logic module
+    #     self._pulsed_master_logic.sample_sequence(sequence_name, True, self._write_chunkwise)
+    #     # disable button
+    #     self._pg.sample_sequence_PushButton.setEnabled(False)
+    #     return
+
+    # def sample_sequence_finished(self, sequence_name):
+    #     """
+    #
+    #     @return:
+    #     """
+    #     # enable button
+    #     self._pg.sample_sequence_PushButton.setEnabled(True)
+    #     return
+
+    def generate_predefined_clicked(self, button_obj=None):
+        """
+
+        @param button_obj:
+        @return:
+        """
+        if type(button_obj) is bool:
+            button_obj = self.sender()
+        method_name = button_obj.objectName()
+        if method_name.startswith('gen_'):
+            method_name = method_name[4:]
+        elif method_name.startswith('sauplo_'):
+            method_name = method_name[7:]
+        else:
+            self.log.error('Strange naming of generate buttons in predefined methods occured.')
+            return
+
+        # get parameters from input widgets
+        param_index = 0
+        param_list = []
+        while True:
+            if not hasattr(self._pm, method_name + '_param_' + str(param_index) + '_Widget'):
+                break
+
+            input_obj = getattr(self._pm, method_name + '_param_' + str(param_index) + '_Widget')
+            if hasattr(input_obj, 'isChecked'):
+                param_list.append(input_obj.isChecked())
+            elif hasattr(input_obj, 'value'):
+                param_list.append(input_obj.value())
+            elif hasattr(input_obj, 'text'):
+                param_list.append(input_obj.text())
+            else:
+                self.log.error('Not possible to get the value from the widgets, since it does not '
+                               'have one of the possible access methods!')
+                return
+
+            param_index += 1
+
+        self._pulsed_master_logic.generate_predefined_sequence(method_name, param_list)
+        return
+
+    def generate_sauplo_predefined_clicked(self):
+        button_obj = self.sender()
+        method_name = button_obj.objectName()[7:]
+        self.generate_predefined_clicked(button_obj)
+        # get name of the generated ensemble
+        input_obj = getattr(self._pm, method_name + '_param_0_Widget')
+        if not hasattr(input_obj, 'text'):
+            self.log.error('Predefined sequence methods must have as first argument the name of '
+                           'the asset to be generated.')
+            return
+        name = input_obj.text()
+        self._pulsed_master_logic.sample_block_ensemble(name, True, False, True)
+        return
+
+    ###########################################################################
+    ###        Methods related to Settings for the 'Analysis' Tab:          ###
+    ###########################################################################
+    #FIXME: Implement the setting for 'Analysis' tab.
+    def _activate_analysis_settings_ui(self, e):
+        """ Initialize, connect and configure the Settings of 'Analysis' Tab.
+
+        @param object e: Fysom.event object from Fysom class. A more detailed
+                         explanation can be found in the method initUI.
+        """
+        self._as = AnalysisSettingDialog()
+        self._as.accepted.connect(self.update_analysis_settings)
+        self._as.rejected.connect(self.keep_former_analysis_settings)
+        self._as.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.update_analysis_settings)
+
+        if 'ana_param_x_axis_name_LineEdit' in self._statusVariables:
+            self._as.ana_param_x_axis_name_LineEdit.setText(self._statusVariables['ana_param_x_axis_name_LineEdit'])
+        if 'ana_param_x_axis_unit_LineEdit' in self._statusVariables:
+            self._as.ana_param_x_axis_unit_LineEdit.setText(self._statusVariables['ana_param_x_axis_unit_LineEdit'])
+        if 'ana_param_y_axis_name_LineEdit' in self._statusVariables:
+            self._as.ana_param_y_axis_name_LineEdit.setText(self._statusVariables['ana_param_y_axis_name_LineEdit'])
+        if 'ana_param_y_axis_unit_LineEdit' in self._statusVariables:
+            self._as.ana_param_y_axis_unit_LineEdit.setText(self._statusVariables['ana_param_y_axis_unit_LineEdit'])
+        if 'ana_param_second_plot_x_axis_name_LineEdit' in self._statusVariables:
+            self._as.ana_param_second_plot_x_axis_name_LineEdit.setText(self._statusVariables['ana_param_second_plot_x_axis_name_LineEdit'])
+        if 'ana_param_second_plot_x_axis_unit_LineEdit' in self._statusVariables:
+            self._as.ana_param_second_plot_x_axis_unit_LineEdit.setText(self._statusVariables['ana_param_second_plot_x_axis_unit_LineEdit'])
+        if 'ana_param_second_plot_y_axis_name_LineEdit' in self._statusVariables:
+            self._as.ana_param_second_plot_y_axis_name_LineEdit.setText(self._statusVariables['ana_param_second_plot_y_axis_name_LineEdit'])
+        if 'ana_param_second_plot_y_axis_unit_LineEdit' in self._statusVariables:
+            self._as.ana_param_second_plot_y_axis_unit_LineEdit.setText(self._statusVariables['ana_param_second_plot_y_axis_unit_LineEdit'])
+        self.update_analysis_settings()
+        return
+
+
+    def _deactivate_analysis_settings_ui(self, e):
+        """ Disconnects the configuration of the Settings for 'Analysis' Tab.
+
+        @param object e: Fysom.event object from Fysom class. A more detailed
+                         explanation can be found in the method initUI.
+        """
+        self._statusVariables['ana_param_x_axis_name_LineEdit'] = self._as.ana_param_x_axis_name_LineEdit.text()
+        self._statusVariables['ana_param_x_axis_unit_LineEdit'] = self._as.ana_param_x_axis_unit_LineEdit.text()
+        self._statusVariables['ana_param_y_axis_name_LineEdit'] = self._as.ana_param_y_axis_name_LineEdit.text()
+        self._statusVariables['ana_param_y_axis_unit_LineEdit'] = self._as.ana_param_y_axis_unit_LineEdit.text()
+        self._statusVariables['ana_param_second_plot_x_axis_name_LineEdit'] = self._as.ana_param_second_plot_x_axis_name_LineEdit.text()
+        self._statusVariables['ana_param_second_plot_x_axis_unit_LineEdit'] = self._as.ana_param_second_plot_x_axis_unit_LineEdit.text()
+        self._statusVariables['ana_param_second_plot_y_axis_name_LineEdit'] = self._as.ana_param_second_plot_y_axis_name_LineEdit.text()
+        self._statusVariables['ana_param_second_plot_y_axis_unit_LineEdit'] = self._as.ana_param_second_plot_y_axis_unit_LineEdit.text()
+        return
+
+
+    def update_analysis_settings(self):
+        """ Apply the new settings """
+        self._pa.pulse_analysis_PlotWidget.setLabel(
+            axis='bottom',
+            text=self._as.ana_param_x_axis_name_LineEdit.text(),
+            units=self._as.ana_param_x_axis_unit_LineEdit.text())
+        self._pa.pulse_analysis_PlotWidget.setLabel(
+            axis='left',
+            text=self._as.ana_param_y_axis_name_LineEdit.text(),
+            units=self._as.ana_param_y_axis_unit_LineEdit.text())
+        self._pa.pulse_analysis_second_PlotWidget.setLabel(
+            axis='bottom',
+            text=self._as.ana_param_second_plot_x_axis_name_LineEdit.text(),
+            units=self._as.ana_param_second_plot_x_axis_unit_LineEdit.text())
+        self._pa.pulse_analysis_second_PlotWidget.setLabel(
+            axis='left',
+            text=self._as.ana_param_second_plot_y_axis_name_LineEdit.text(),
+            units=self._as.ana_param_second_plot_y_axis_unit_LineEdit.text())
+        return
+
+    def keep_former_analysis_settings(self):
+        """ Keep the old settings """
+        #FIXME: Implement the behaviour
+        pass
+
+    def show_analysis_settings(self):
+        """ Open the Analysis Settings Window. """
+        self._as.exec_()
+        return
+
+    ###########################################################################
+    ###     Methods related to the Tab 'Analysis' in the Pulsed Window:     ###
+    ###########################################################################
+    def setup_toolbar(self):
+        # create all the needed control widgets on the fly and connect their
+        # actions to each other:
+        self._mw.pulser_on_off_PushButton = QtWidgets.QPushButton()
+        self._mw.pulser_on_off_PushButton.setText('Pulser ON')
+        self._mw.pulser_on_off_PushButton.setToolTip('Switch the device on and off.')
+        self._mw.pulser_on_off_PushButton.setCheckable(True)
+        self._mw.control_ToolBar.addWidget(self._mw.pulser_on_off_PushButton)
+
+        self._mw.clear_device_PushButton = QtWidgets.QPushButton(self._mw)
+        self._mw.clear_device_PushButton.setText('Clear Pulser')
+        self._mw.clear_device_PushButton.setToolTip(
+            'Clear the Pulser Device Memory\nfrom all loaded files.')
+        self._mw.control_ToolBar.addWidget(self._mw.clear_device_PushButton)
+
+        self._mw.current_loaded_asset_Label = QtWidgets.QLabel(self._mw)
+        sizepolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                           QtWidgets.QSizePolicy.Fixed)
+        sizepolicy.setHorizontalStretch(0)
+        sizepolicy.setVerticalStretch(0)
+        sizepolicy.setHeightForWidth(
+            self._mw.current_loaded_asset_Label.sizePolicy().hasHeightForWidth())
+        self._mw.current_loaded_asset_Label.setSizePolicy(sizepolicy)
+        self._mw.current_loaded_asset_Label.setText('  No Asset Loaded')
+        self._mw.current_loaded_asset_Label.setToolTip('Display the currently loaded asset.')
+        self._mw.control_ToolBar.addWidget(self._mw.current_loaded_asset_Label)
+
+        self._mw.save_tag_LineEdit = QtWidgets.QLineEdit()
+        self._mw.save_tag_LineEdit.setMaximumWidth(200)
+        self._mw.save_ToolBar.addWidget(self._mw.save_tag_LineEdit)
+
+    def setup_extraction_ui(self):
+        self.lasertrace_image = pg.PlotDataItem(np.array(range(10)), np.zeros(10), pen=palette.c1)
+        self._pe.laserpulses_PlotWidget.addItem(self.lasertrace_image)
+        self._pe.laserpulses_PlotWidget.addItem(self.sig_start_line)
+        self._pe.laserpulses_PlotWidget.addItem(self.sig_end_line)
+        self._pe.laserpulses_PlotWidget.addItem(self.ref_start_line)
+        self._pe.laserpulses_PlotWidget.addItem(self.ref_end_line)
+        self._pe.laserpulses_PlotWidget.setLabel('bottom', 'bins')
+
+    def _activate_analysis_ui(self, e):
+        """ Initialize, connect and configure the 'Analysis' Tab.
+
+        @param object e: Fysom.event object from Fysom class. A more detailed
+                         explanation can be found in the method initUI.
+        """
+        if 'ana_param_invoke_settings_CheckBox' in self._statusVariables:
+            self._pa.ana_param_invoke_settings_CheckBox.setChecked(self._statusVariables['ana_param_invoke_settings_CheckBox'])
+        if 'ana_param_errorbars_CheckBox' in self._statusVariables:
+            self._pa.ana_param_errorbars_CheckBox.setChecked(self._statusVariables['ana_param_errorbars_CheckBox'])
+        # if 'second_plot_ComboBox_text' in self._statusVariables:
+        #     self._pa.second_plot_ComboBox.setText(self._statusVariables['second_plot_ComboBox_text'])
+
+        # FIXME: Implement second plot
+        self._pa.second_plot_GroupBox.setVisible(False)
+        # Configure the main pulse analysis display:
+        self.signal_image = pg.PlotDataItem(np.array(range(10)), np.zeros(10), pen=palette.c1)
+        self._pa.pulse_analysis_PlotWidget.addItem(self.signal_image)
+        self.signal_image2 = pg.PlotDataItem(pen=palette.c3)
+        self._pa.pulse_analysis_PlotWidget.addItem(self.signal_image2)
+        self._pa.pulse_analysis_PlotWidget.showGrid(x=True, y=True, alpha=0.8)
+
+        # Configure the fit of the data in the main pulse analysis display:
+        self.fit_image = pg.PlotDataItem(pen=palette.c2)
+        self._pa.pulse_analysis_PlotWidget.addItem(self.fit_image)
+        self._pa.fit_param_fit_func_ComboBox.clear()
+        self._pa.fit_param_fit_func_ComboBox.addItems(self._pulsed_master_logic.get_fit_functions())
+
+        # Configure the errorbars of the data in the main pulse analysis display:
+        self.signal_image_error_bars = pg.ErrorBarItem(
+            x=np.array(range(10)),
+            y=np.zeros(10),
+            top=0.,
+            bottom=0.,
+            pen=palette.c1)
+        self.signal_image_error_bars2 = pg.ErrorBarItem(
+            x=np.array(range(10)),
+            y=np.zeros(10),
+            top=0.,
+            bottom=0.,
+            pen=palette.c3)
+
+        # Configure the second pulse analysis display:
+        self.second_plot_image = pg.PlotDataItem(np.array(range(10)), np.zeros(10), pen=palette.c1)
+        self._pa.pulse_analysis_second_PlotWidget.addItem(self.second_plot_image)
+        self._pa.pulse_analysis_second_PlotWidget.showGrid(x=True, y=True, alpha=0.8)
+
+        # Configure the lasertrace plot display:
+        self.sig_start_line = pg.InfiniteLine(pos=0, pen=QtGui.QPen(palette.c3), movable=True)
+        self.sig_start_line.setHoverPen(QtGui.QPen(palette.c2))
+        self.sig_end_line = pg.InfiniteLine(pos=0, pen=QtGui.QPen(palette.c3), movable=True)
+        self.sig_end_line.setHoverPen(QtGui.QPen(palette.c2))
+        self.ref_start_line = pg.InfiniteLine(pos=0, pen=QtGui.QPen(palettedark.c4), movable=True)
+        self.ref_start_line.setHoverPen(QtGui.QPen(palette.c4))
+        self.ref_end_line = pg.InfiniteLine(pos=0, pen=QtGui.QPen(palettedark.c4), movable=True)
+        self.ref_end_line.setHoverPen(QtGui.QPen(palette.c4))
+        # Configure the measuring error display:
+        self.measuring_error_image = pg.PlotDataItem(
+            np.array(range(10)),
+            np.zeros(10),
+            pen=palette.c1)
+        self.measuring_error_image2 = pg.PlotDataItem(
+            np.array(range(10)),
+            np.zeros(10),
+            pen=palette.c3)
+        self._pe.measuring_error_PlotWidget.addItem(self.measuring_error_image)
+        self._pe.measuring_error_PlotWidget.addItem(self.measuring_error_image2)
+        self._pe.measuring_error_PlotWidget.setLabel('left', 'measuring error', units='a.u.')
+        self._pe.measuring_error_PlotWidget.setLabel('bottom', 'tau', units='ns')
+
+
+        # set boundaries
+        self._pe.slider_conv_std_dev.setRange(1, 200)
+        self._pe.conv_std_dev.setRange(1, 200)
+
+        # ---------------------------------------------------------------------
+        #                         Connect signals
+        # ---------------------------------------------------------------------
+        # connect update signals from logic
+        self._pulsed_master_logic.sigSignalDataUpdated.connect(self.signal_data_updated)
+        self._pulsed_master_logic.sigLaserDataUpdated.connect(self.laser_data_updated)
+        self._pulsed_master_logic.sigLaserToShowUpdated.connect(self.laser_to_show_updated)
+        self._pulsed_master_logic.sigElapsedTimeUpdated.connect(self.elapsed_time_updated)
+        self._pulsed_master_logic.sigFitUpdated.connect(self.fit_data_updated)
+        self._pulsed_master_logic.sigMeasurementStatusUpdated.connect(self.measurement_status_updated)
+        self._pulsed_master_logic.sigPulserRunningUpdated.connect(self.pulser_running_updated)
+        self._pulsed_master_logic.sigFastCounterSettingsUpdated.connect(self.fast_counter_settings_updated)
+        self._pulsed_master_logic.sigMeasurementSequenceSettingsUpdated.connect(self.measurement_sequence_settings_updated)
+        self._pulsed_master_logic.sigPulserSettingsUpdated.connect(self.pulse_generator_settings_updated)
+        self._pulsed_master_logic.sigUploadedAssetsUpdated.connect(self.update_uploaded_assets)
+        self._pulsed_master_logic.sigLoadedAssetUpdated.connect(self.update_loaded_asset)
+        self._pulsed_master_logic.sigExtMicrowaveSettingsUpdated.connect(self.microwave_settings_updated)
+        self._pulsed_master_logic.sigExtMicrowaveRunningUpdated.connect(self.microwave_running_updated)
+        self._pulsed_master_logic.sigTimerIntervalUpdated.connect(self.measurement_timer_updated)
+        self._pulsed_master_logic.sigAnalysisWindowsUpdated.connect(self.analysis_windows_updated)
+        self._pulsed_master_logic.sigAnalysisMethodUpdated.connect(self.analysis_method_updated)
+
+        # connect button click signals
+        self._pg.upload_ensemble_PushButton.clicked.connect(self.upload_ensemble_clicked)
+        self._pg.load_ensemble_PushButton.clicked.connect(self.load_ensemble_clicked)
+        # self._pg.upload_sequence_PushButton.clicked.connect(self.upload_sequence_clicked)
+        # self._pg.load_sequence_PushButton.clicked.connect(self.load_sequence_clicked)
+        self._mw.pulser_on_off_PushButton.clicked.connect(self.pulser_on_off_clicked)
+        self._mw.clear_device_PushButton.clicked.connect(self.clear_pulser_clicked)
+        self._pa.fit_param_PushButton.clicked.connect(self.fit_clicked)
+
+        # connect action trigger signals
+        self._mw.action_run_stop.triggered.connect(self.measurement_run_stop_clicked)
+        self._mw.action_continue_pause.triggered.connect(self.measurement_continue_pause_clicked)
+        self._mw.action_pull_data.triggered.connect(self.pull_data_clicked)
+        self._mw.action_save.triggered.connect(self.save_clicked)
+        self._mw.action_Settings_Analysis.triggered.connect(self.show_analysis_settings)
+
+        # connect checkbox click signals
+        self._pa.ext_control_use_mw_CheckBox.stateChanged.connect(self.ext_mw_params_changed)
+        self._pa.ana_param_invoke_settings_CheckBox.stateChanged.connect(self.toggle_settings_editor)
+        self._pa.ana_param_alternating_CheckBox.stateChanged.connect(self.measurement_sequence_settings_changed)
+        self._pa.ana_param_ignore_first_CheckBox.stateChanged.connect(self.measurement_sequence_settings_changed)
+        self._pa.ana_param_ignore_last_CheckBox.stateChanged.connect(self.measurement_sequence_settings_changed)
+        self._pe.laserpulses_display_raw_CheckBox.stateChanged.connect(self.laser_to_show_changed)
+        self._pa.ana_param_errorbars_CheckBox.stateChanged.connect(self.toggle_error_bars)
+        self._pa.pulser_use_interleave_CheckBox.stateChanged.connect(self.pulse_generator_settings_changed)
+
+        # connect spinbox changed signals
+        self._pa.ana_param_num_laser_pulse_SpinBox.editingFinished.connect(self.measurement_sequence_settings_changed)
+        self._pa.ana_param_record_length_SpinBox.editingFinished.connect(self.fast_counter_settings_changed)
+        self._pa.time_param_ana_periode_DoubleSpinBox.editingFinished.connect(self.measurement_timer_changed)
+        self._pa.ext_control_mw_freq_DoubleSpinBox.editingFinished.connect(self.ext_mw_params_changed)
+        self._pa.ext_control_mw_power_DoubleSpinBox.editingFinished.connect(self.ext_mw_params_changed)
+        self._pa.pulser_sample_freq_DSpinBox.editingFinished.connect(self.pulse_generator_settings_changed)
+        self._pa.ana_param_x_axis_start_ScienDSpinBox.editingFinished.connect(self.measurement_sequence_settings_changed)
+        self._pa.ana_param_x_axis_inc_ScienDSpinBox.editingFinished.connect(self.measurement_sequence_settings_changed)
+        self._pe.extract_param_ana_window_start_SpinBox.editingFinished.connect(self.analysis_windows_changed)
+        self._pe.extract_param_ana_window_width_SpinBox.editingFinished.connect(self.analysis_windows_changed)
+        self._pe.extract_param_ref_window_start_SpinBox.editingFinished.connect(self.analysis_windows_changed)
+        self._pe.extract_param_ref_window_width_SpinBox.editingFinished.connect(self.analysis_windows_changed)
+        self._pe.conv_std_dev.valueChanged.connect(self.conv_std_dev_changed)
+
+        # connect combobox changed signals
+        self._pa.ana_param_fc_bins_ComboBox.currentIndexChanged.connect(self.fast_counter_settings_changed)
+        #self._pa.second_plot_ComboBox.currentIndexChanged.connect(self.change_second_plot)
+        self._pa.pulser_activation_config_ComboBox.currentIndexChanged.connect(self.pulse_generator_settings_changed)
+        self._pe.laserpulses_ComboBox.currentIndexChanged.connect(self.laser_to_show_changed)
+
+        # connect other widgets changed signals
+        self.sig_start_line.sigPositionChanged.connect(self.analysis_windows_line_changed)
+        self.sig_end_line.sigPositionChanged.connect(self.analysis_windows_line_changed)
+        self.ref_start_line.sigPositionChanged.connect(self.analysis_windows_line_changed)
+        self.ref_end_line.sigPositionChanged.connect(self.analysis_windows_line_changed)
+        self._pe.slider_conv_std_dev.sliderReleased.connect(self.slider_conv_std_dev_changed)
+
+        # apply hardware constraints
+        self._analysis_apply_hardware_constraints()
+
+        self._pulsed_master_logic.invoke_settings = self._pa.ana_param_invoke_settings_CheckBox.isChecked()
+        self.toggle_settings_editor()
+        self.toggle_error_bars()
+        #self.change_second_plot()
+
+        # initialize values
+        self._pulsed_master_logic.request_measurement_init_values()
+        return
+
+    def _deactivate_analysis_ui(self, e):
+        """ Disconnects the configuration for 'Analysis' Tab.
+
+       @param object e: Fysom.event object from Fysom class. A more detailed
+                         explanation can be found in the method initUI.
+        """
+        self.measurement_run_stop_clicked(False)
+
+        self._statusVariables['ana_param_invoke_settings_CheckBox'] = self._pa.ana_param_invoke_settings_CheckBox.isChecked()
+        self._statusVariables['ana_param_errorbars_CheckBox'] = self._pa.ana_param_errorbars_CheckBox.isChecked()
+        self._statusVariables['second_plot_ComboBox_text'] = self._pa.second_plot_ComboBox.currentText()
+
+        # disconnect signals
+        self._pulsed_master_logic.sigSignalDataUpdated.disconnect()
+        self._pulsed_master_logic.sigLaserDataUpdated.disconnect()
+        self._pulsed_master_logic.sigLaserToShowUpdated.disconnect()
+        self._pulsed_master_logic.sigElapsedTimeUpdated.disconnect()
+        self._pulsed_master_logic.sigFitUpdated.disconnect()
+        self._pulsed_master_logic.sigMeasurementStatusUpdated.disconnect()
+        self._pulsed_master_logic.sigPulserRunningUpdated.disconnect()
+        self._pulsed_master_logic.sigFastCounterSettingsUpdated.disconnect()
+        self._pulsed_master_logic.sigMeasurementSequenceSettingsUpdated.disconnect()
+        self._pulsed_master_logic.sigPulserSettingsUpdated.disconnect()
+        self._pulsed_master_logic.sigUploadedAssetsUpdated.disconnect()
+        self._pulsed_master_logic.sigLoadedAssetUpdated.disconnect()
+        self._pulsed_master_logic.sigExtMicrowaveSettingsUpdated.disconnect()
+        self._pulsed_master_logic.sigExtMicrowaveRunningUpdated.disconnect()
+        self._pulsed_master_logic.sigTimerIntervalUpdated.disconnect()
+        self._pulsed_master_logic.sigAnalysisWindowsUpdated.disconnect()
+        self._pulsed_master_logic.sigAnalysisMethodUpdated.disconnect()
+        self._pg.upload_ensemble_PushButton.clicked.disconnect()
+        self._pg.load_ensemble_PushButton.clicked.disconnect()
+        # self._pg.upload_sequence_PushButton.clicked.disconnect()
+        # self._pg.load_sequence_PushButton.clicked.disconnect()
+        self._mw.pulser_on_off_PushButton.clicked.disconnect()
+        self._mw.clear_device_PushButton.clicked.disconnect()
+        self._pa.fit_param_PushButton.clicked.disconnect()
+        self._mw.action_run_stop.triggered.disconnect()
+        self._mw.action_continue_pause.triggered.disconnect()
+        self._mw.action_pull_data.triggered.disconnect()
+        self._mw.action_save.triggered.disconnect()
+        self._mw.action_Settings_Analysis.triggered.disconnect()
+        self._pa.ext_control_use_mw_CheckBox.stateChanged.disconnect()
+        self._pa.ana_param_invoke_settings_CheckBox.stateChanged.disconnect()
+        self._pa.ana_param_alternating_CheckBox.stateChanged.disconnect()
+        self._pa.ana_param_ignore_first_CheckBox.stateChanged.disconnect()
+        self._pa.ana_param_ignore_last_CheckBox.stateChanged.disconnect()
+        self._pe.laserpulses_display_raw_CheckBox.stateChanged.disconnect()
+        self._pa.ana_param_errorbars_CheckBox.stateChanged.disconnect()
+        self._pa.pulser_use_interleave_CheckBox.stateChanged.disconnect()
+        self._pa.ana_param_num_laser_pulse_SpinBox.editingFinished.disconnect()
+        self._pa.ana_param_record_length_SpinBox.editingFinished.disconnect()
+        self._pa.time_param_ana_periode_DoubleSpinBox.editingFinished.disconnect()
+        self._pa.ext_control_mw_freq_DoubleSpinBox.editingFinished.disconnect()
+        self._pa.ext_control_mw_power_DoubleSpinBox.editingFinished.disconnect()
+        self._pa.pulser_sample_freq_DSpinBox.editingFinished.disconnect()
+        self._pa.ana_param_x_axis_start_ScienDSpinBox.editingFinished.disconnect()
+        self._pa.ana_param_x_axis_inc_ScienDSpinBox.editingFinished.disconnect()
+        self._pe.extract_param_ana_window_start_SpinBox.editingFinished.disconnect()
+        self._pe.extract_param_ana_window_width_SpinBox.editingFinished.disconnect()
+        self._pe.extract_param_ref_window_start_SpinBox.editingFinished.disconnect()
+        self._pe.extract_param_ref_window_width_SpinBox.editingFinished.disconnect()
+        self._pe.conv_std_dev.valueChanged.disconnect()
+        self._pa.ana_param_fc_bins_ComboBox.currentIndexChanged.disconnect()
+        #self._pa.second_plot_ComboBox.currentIndexChanged.disconnect()
+        self._pa.pulser_activation_config_ComboBox.currentIndexChanged.disconnect()
+        self._pe.laserpulses_ComboBox.currentIndexChanged.disconnect()
+        self.sig_start_line.sigPositionChanged.disconnect()
+        self.sig_end_line.sigPositionChanged.disconnect()
+        self.ref_start_line.sigPositionChanged.disconnect()
+        self.ref_end_line.sigPositionChanged.disconnect()
+        self._pe.slider_conv_std_dev.sliderReleased.disconnect()
+        return
+
+    def _analysis_apply_hardware_constraints(self):
+        """
+        Retrieve the constraints from pulser and fast counter hardware and apply these constraints
+        to the analysis tab GUI elements.
+        """
+        # block signals
+        self._pa.pulser_activation_config_ComboBox.blockSignals(True)
+        self._pa.ana_param_fc_bins_ComboBox.blockSignals(True)
+        # apply constraints
+        pulser_constr, fastcounter_constr = self._pulsed_master_logic.get_hardware_constraints()
+        sample_min = pulser_constr['sample_rate']['min']
+        sample_max = pulser_constr['sample_rate']['max']
+        sample_step = pulser_constr['sample_rate']['step']
+        self._pa.pulser_sample_freq_DSpinBox.setMinimum(sample_min)
+        self._pa.pulser_sample_freq_DSpinBox.setMaximum(sample_max)
+        self._pa.pulser_sample_freq_DSpinBox.setSingleStep(sample_step)
+        self._pa.pulser_activation_config_ComboBox.clear()
+        self._pa.pulser_activation_config_ComboBox.addItems(list(pulser_constr['activation_config']))
+        self._pa.ana_param_fc_bins_ComboBox.clear()
+        for binwidth in fastcounter_constr['hardware_binwidth_list']:
+            self._pa.ana_param_fc_bins_ComboBox.addItem(str(binwidth))
+        # unblock signals
+        self._pa.pulser_activation_config_ComboBox.blockSignals(False)
+        self._pa.ana_param_fc_bins_ComboBox.blockSignals(False)
+        return
+
+    def measurement_run_stop_clicked(self, isChecked):
+        """ Manages what happens if pulsed measurement is started or stopped.
+
+        @param bool isChecked: start scan if that is possible
+        """
+        if isChecked:
+            self._pulsed_master_logic.start_measurement()
+        else:
+            self._pulsed_master_logic.stop_measurement()
+        return
+
+    #ToDo: I think that is not really working yet. Yeap, true....
+    def measurement_continue_pause_clicked(self, isChecked):
+        """ Continues and pauses the measurement. """
+        if isChecked:
+            self._pulsed_master_logic.pause_measurement()
+        else:
+            self._pulsed_master_logic.continue_measurement()
+        return
+
+    def measurement_status_updated(self, is_running, is_paused):
+        """
+
+        @param is_running:
+        @param is_paused:
+        @return:
+        """
+        # block signals
+        self._mw.action_run_stop.blockSignals(True)
+        self._mw.action_continue_pause.blockSignals(True)
+
+        # Enable/Disable widgets
+        if is_running:
+            if self._pa.ext_control_use_mw_CheckBox.isChecked():
+                self._pa.ext_control_mw_freq_DoubleSpinBox.setEnabled(False)
+                self._pa.ext_control_mw_power_DoubleSpinBox.setEnabled(False)
+            if not self._pa.ana_param_invoke_settings_CheckBox.isChecked():
+                self._pa.ana_param_x_axis_start_ScienDSpinBox.setEnabled(False)
+                self._pa.ana_param_x_axis_inc_ScienDSpinBox.setEnabled(False)
+                self._pa.ana_param_num_laser_pulse_SpinBox.setEnabled(False)
+                self._pa.ana_param_record_length_SpinBox.setEnabled(False)
+            self._pa.ext_control_use_mw_CheckBox.setEnabled(False)
+            self._pa.pulser_sample_freq_DSpinBox.setEnabled(False)
+            self._pa.pulser_activation_config_ComboBox.setEnabled(False)
+            self._pa.ana_param_fc_bins_ComboBox.setEnabled(False)
+            self._pa.ana_param_ignore_first_CheckBox.setEnabled(False)
+            self._pa.ana_param_ignore_last_CheckBox.setEnabled(False)
+            self._pa.ana_param_alternating_CheckBox.setEnabled(False)
+            self._pa.ana_param_invoke_settings_CheckBox.setEnabled(False)
+            self._pa.pulser_use_interleave_CheckBox.setEnabled(False)
+            self._pg.load_ensemble_PushButton.setEnabled(False)
+            # self._pg.load_sequence_PushButton.setEnabled(False)
+            self._mw.pulser_on_off_PushButton.setEnabled(False)
+            self._mw.action_continue_pause.setEnabled(True)
+            self._mw.action_pull_data.setEnabled(True)
+            if not self._mw.action_run_stop.isChecked():
+                self._mw.action_run_stop.toggle()
+        else:
+            self._pa.ext_control_use_mw_CheckBox.setEnabled(True)
+            if self._pa.ext_control_use_mw_CheckBox.isChecked():
+                self._pa.ext_control_mw_freq_DoubleSpinBox.setEnabled(True)
+                self._pa.ext_control_mw_power_DoubleSpinBox.setEnabled(True)
+            self._pa.pulser_sample_freq_DSpinBox.setEnabled(True)
+            self._pa.pulser_activation_config_ComboBox.setEnabled(True)
+            self._pa.ana_param_fc_bins_ComboBox.setEnabled(True)
+            self._pa.ana_param_ignore_first_CheckBox.setEnabled(True)
+            self._pa.ana_param_ignore_last_CheckBox.setEnabled(True)
+            self._pa.ana_param_alternating_CheckBox.setEnabled(True)
+            self._pa.ana_param_invoke_settings_CheckBox.setEnabled(True)
+            self._pa.pulser_use_interleave_CheckBox.setEnabled(True)
+            if not self._pa.ana_param_invoke_settings_CheckBox.isChecked():
+                self._pa.ana_param_x_axis_start_ScienDSpinBox.setEnabled(True)
+                self._pa.ana_param_x_axis_inc_ScienDSpinBox.setEnabled(True)
+                self._pa.ana_param_num_laser_pulse_SpinBox.setEnabled(True)
+                self._pa.ana_param_record_length_SpinBox.setEnabled(True)
+            self._pg.load_ensemble_PushButton.setEnabled(True)
+            # self._pg.load_sequence_PushButton.setEnabled(True)
+            self._mw.pulser_on_off_PushButton.setEnabled(True)
+            self._mw.action_continue_pause.setEnabled(False)
+            self._mw.action_pull_data.setEnabled(False)
+            if self._mw.action_run_stop.isChecked():
+                self._mw.action_run_stop.toggle()
+        if is_paused:
+            if not self._mw.action_continue_pause.isChecked():
+                self._mw.action_continue_pause.toggle()
+        else:
+            if self._mw.action_continue_pause.isChecked():
+                self._mw.action_continue_pause.toggle()
+        # unblock signals
+        self._mw.action_run_stop.blockSignals(False)
+        self._mw.action_continue_pause.blockSignals(False)
+        return
+
+    def pull_data_clicked(self):
+        """ Pulls and analysis the data when the 'action_pull_data'-button is clicked. """
+        self._pulsed_master_logic.manually_pull_data()
+        return
+
+    def signal_data_updated(self, x_data, y_signal_data, y2_signal_data, y_error_data, y2_error_data):
+        """
+
+        @param x_data:
+        @param y_signal_data:
+        @param y2_signal_data:
+        @param y_error_data:
+        @param y2_error_data:
+        @return:
+        """
+        is_alternating = self._pa.ana_param_alternating_CheckBox.isChecked()
+
+        # create ErrorBarItems
+        beamwidth = np.inf
+        for i in range(len(x_data) - 1):
+            width = x_data[i + 1] - x_data[i]
+            width = width / 3
+            if width <= beamwidth:
+                beamwidth = width
+        self.signal_image_error_bars.setData(x=x_data, y=y_signal_data, top=y_error_data,
+                                             bottom=y_error_data, beam=beamwidth)
+        if is_alternating:
+            self.signal_image_error_bars2.setData(x=x_data, y=y2_signal_data, top=y2_error_data,
+                                                  bottom=y2_error_data, beam=beamwidth)
+        # dealing with the actual signal
+        self.signal_image.setData(x=x_data, y=y_signal_data)
+        if is_alternating:
+            self.signal_image2.setData(x=x_data, y=y2_signal_data)
+
+        # dealing with the error plot
+        self.measuring_error_image.setData(x=x_data, y=y_error_data)
+        if is_alternating:
+            self.measuring_error_image2.setData(x=x_data, y=y2_error_data)
+        return
+
+    def save_clicked(self):
+        """Saves the current data"""
+        self._mw.action_save.setEnabled(False)
+        save_tag = self._mw.save_tag_LineEdit.text()
+        self._pulsed_master_logic.save_measurement_data(save_tag)
+        self._mw.action_save.setEnabled(True)
+        return
+
+    def fit_clicked(self):
+        """Fits the current data"""
+        current_fit_function = self._pa.fit_param_fit_func_ComboBox.currentText()
+        self._pulsed_master_logic.do_fit(current_fit_function)
+        return
+
+    def fit_data_updated(self, fit_function, fit_data_x, fit_data_y, param_dict, result_dict):
+        """
+
+        @param fit_function:
+        @param fit_data_x:
+        @param fit_data_y:
+        @param param_dict:
+        @param result_dict:
+        @return:
+        """
+        # block signals
+        self._pa.fit_param_fit_func_ComboBox.blockSignals(True)
+        # set widgets
+        self._pa.fit_param_results_TextBrowser.clear()
+        fit_text = units.create_formatted_output(param_dict)
+        self._pa.fit_param_results_TextBrowser.setPlainText(fit_text)
+        self.fit_image.setData(x=fit_data_x, y=fit_data_y)
+        if fit_function == 'No Fit' and self.fit_image in self._pa.pulse_analysis_PlotWidget.items():
+            self._pa.pulse_analysis_PlotWidget.removeItem(self.fit_image)
+        elif fit_function != 'No Fit' and self.fit_image not in self._pa.pulse_analysis_PlotWidget.items():
+            self._pa.pulse_analysis_PlotWidget.addItem(self.fit_image)
+        if self._pa.fit_param_fit_func_ComboBox.currentText() != fit_function:
+            index = self._pa.fit_param_fit_func_ComboBox.findText(fit_function)
+            if index >= 0:
+                self._pa.fit_param_fit_func_ComboBox.setCurrentIndex(index)
+        # unblock signals
+        self._pa.fit_param_fit_func_ComboBox.blockSignals(False)
+        return
+
+    def elapsed_time_updated(self, elapsed_time, elapsed_time_str):
+        """
+        Refreshes the elapsed time and sweeps of the measurement.
+
+        @param elapsed_time:
+        @param elapsed_time_str:
+        @return:
+        """
+        # block signals
+        self._pa.time_param_elapsed_time_LineEdit.blockSignals(True)
+        # Set widgets
+        self._pa.time_param_elapsed_time_LineEdit.setText(elapsed_time_str)
+        # unblock signals
+        self._pa.time_param_elapsed_time_LineEdit.blockSignals(True)
+        return
+
+    def ext_mw_params_changed(self):
+        """ Shows or hides input widgets which are necessary if an external mw is turned on"""
+        use_ext_microwave = self._pa.ext_control_use_mw_CheckBox.isChecked()
+        microwave_freq = self._pa.ext_control_mw_freq_DoubleSpinBox.value()
+        microwave_power = self._pa.ext_control_mw_power_DoubleSpinBox.value()
+        if use_ext_microwave and not self._pa.ext_control_mw_freq_DoubleSpinBox.isVisible():
+            self._pa.ext_control_mw_freq_Label.setVisible(True)
+            self._pa.ext_control_mw_freq_DoubleSpinBox.setVisible(True)
+            self._pa.ext_control_mw_power_Label.setVisible(True)
+            self._pa.ext_control_mw_power_DoubleSpinBox.setVisible(True)
+            self._pa.ext_control_mw_freq_DoubleSpinBox.setEnabled(True)
+            self._pa.ext_control_mw_power_DoubleSpinBox.setEnabled(True)
+        elif not use_ext_microwave and self._pa.ext_control_mw_freq_DoubleSpinBox.isVisible():
+            self._pa.ext_control_mw_freq_DoubleSpinBox.setEnabled(False)
+            self._pa.ext_control_mw_power_DoubleSpinBox.setEnabled(False)
+            self._pa.ext_control_mw_freq_Label.setVisible(False)
+            self._pa.ext_control_mw_freq_DoubleSpinBox.setVisible(False)
+            self._pa.ext_control_mw_power_Label.setVisible(False)
+            self._pa.ext_control_mw_power_DoubleSpinBox.setVisible(False)
+
+        self._pulsed_master_logic.ext_microwave_settings_changed(microwave_freq, microwave_power,
+                                                                 use_ext_microwave)
+        return
+
+    def microwave_settings_updated(self, frequency, power, use_ext_microwave):
+        """
+
+        @param frequency:
+        @param power:
+        @param use_ext_microwave:
+        @return:
+        """
+        # set visibility
+        if use_ext_microwave and not self._pa.ext_control_mw_freq_DoubleSpinBox.isVisible():
+            self._pa.ext_control_mw_freq_Label.setVisible(True)
+            self._pa.ext_control_mw_freq_DoubleSpinBox.setVisible(True)
+            self._pa.ext_control_mw_power_Label.setVisible(True)
+            self._pa.ext_control_mw_power_DoubleSpinBox.setVisible(True)
+            self._pa.ext_control_mw_freq_DoubleSpinBox.setEnabled(True)
+            self._pa.ext_control_mw_power_DoubleSpinBox.setEnabled(True)
+        elif not use_ext_microwave and self._pa.ext_control_mw_freq_DoubleSpinBox.isVisible():
+            self._pa.ext_control_mw_freq_DoubleSpinBox.setEnabled(False)
+            self._pa.ext_control_mw_power_DoubleSpinBox.setEnabled(False)
+            self._pa.ext_control_mw_freq_Label.setVisible(False)
+            self._pa.ext_control_mw_freq_DoubleSpinBox.setVisible(False)
+            self._pa.ext_control_mw_power_Label.setVisible(False)
+            self._pa.ext_control_mw_power_DoubleSpinBox.setVisible(False)
+        # block signals
+        self._pa.ext_control_mw_freq_DoubleSpinBox.blockSignals(True)
+        self._pa.ext_control_mw_power_DoubleSpinBox.blockSignals(True)
+        self._pa.ext_control_use_mw_CheckBox.blockSignals(True)
+        # set widgets
+        self._pa.ext_control_mw_freq_DoubleSpinBox.setValue(frequency)
+        self._pa.ext_control_mw_power_DoubleSpinBox.setValue(power)
+        self._pa.ext_control_use_mw_CheckBox.setChecked(use_ext_microwave)
+        # unblock signals
+        self._pa.ext_control_mw_freq_DoubleSpinBox.blockSignals(False)
+        self._pa.ext_control_mw_power_DoubleSpinBox.blockSignals(False)
+        self._pa.ext_control_use_mw_CheckBox.blockSignals(False)
+        return
+
+    def microwave_running_updated(self, is_running):
+        """
+
+        @return:
+        """
+        pass
+
+    def pulse_generator_settings_changed(self):
+        """
+
+        @return:
+        """
+        # FIXME: Properly implement amplitude and interleave
+        sample_rate_hz = self._pa.pulser_sample_freq_DSpinBox.value()
+        activation_config_name = self._pa.pulser_activation_config_ComboBox.currentText()
+        analogue_amplitude, dummy = self._pulsed_master_logic._measurement_logic._pulse_generator_device.get_analog_level()
+        interleave_on = self._pa.pulser_use_interleave_CheckBox.isChecked()
+        self._pulsed_master_logic.pulse_generator_settings_changed(sample_rate_hz,
+                                                                   activation_config_name,
+                                                                   analogue_amplitude,
+                                                                   interleave_on)
+        return
+
+    def pulse_generator_settings_updated(self, sample_rate_hz, activation_config_name,
+                                         activation_config, analogue_amplitude, interleave_on):
+        """
+
+        @param sample_rate_hz:
+        @param activation_config_name:
+        @param analogue_amplitude:
+        @param interleave_on:
+        @return:
+        """
+        # block signals
+        self._pa.pulser_sample_freq_DSpinBox.blockSignals(True)
+        self._pa.pulser_activation_config_ComboBox.blockSignals(True)
+        self._pa.pulser_activation_config_LineEdit.blockSignals(True)
+        self._pa.pulser_use_interleave_CheckBox.blockSignals(True)
+        # Set widgets
+        # FIXME: Properly implement amplitude and interleave
+        self._pa.pulser_sample_freq_DSpinBox.setValue(sample_rate_hz)
+        index = self._pa.pulser_activation_config_ComboBox.findText(activation_config_name)
+        self._pa.pulser_activation_config_ComboBox.setCurrentIndex(index)
+        config_display_str = ''
+        for channel in activation_config:
+            config_display_str += channel + ' | '
+        config_display_str = config_display_str[:-3]
+        self._pa.pulser_activation_config_LineEdit.setText(config_display_str)
+        self._pa.pulser_use_interleave_CheckBox.setChecked(interleave_on)
+        # unblock signals
+        self._pa.pulser_sample_freq_DSpinBox.blockSignals(False)
+        self._pa.pulser_activation_config_ComboBox.blockSignals(False)
+        self._pa.pulser_activation_config_LineEdit.blockSignals(False)
+        self._pa.pulser_use_interleave_CheckBox.blockSignals(False)
+        return
+
+    def fast_counter_settings_changed(self):
+        """
+
+        @return:
+        """
+        record_length_s = self._pa.ana_param_record_length_SpinBox.value()
+        bin_width_s = float(self._pa.ana_param_fc_bins_ComboBox.currentText())
+        self._pulsed_master_logic.fast_counter_settings_changed(bin_width_s, record_length_s)
+        return
+
+    def fast_counter_settings_updated(self, bin_width_s, record_length_s):
+        """
+
+        @param bin_width_s:
+        @param record_length_s:
+        @return:
+        """
+        # block signals
+        self._pa.ana_param_record_length_SpinBox.blockSignals(True)
+        self._pa.ana_param_fc_bins_ComboBox.blockSignals(True)
+        # set widgets
+        self._pa.ana_param_record_length_SpinBox.setValue(record_length_s)
+        index = self._pa.ana_param_fc_bins_ComboBox.findText(str(bin_width_s))
+        self._pa.ana_param_fc_bins_ComboBox.setCurrentIndex(index)
+        # unblock signals
+        self._pa.ana_param_record_length_SpinBox.blockSignals(False)
+        self._pa.ana_param_fc_bins_ComboBox.blockSignals(False)
+        return
+
+    def measurement_sequence_settings_changed(self):
+        """
+
+        @return:
+        """
+        laser_ignore_list = []
+        if self._pa.ana_param_ignore_first_CheckBox.isChecked():
+            laser_ignore_list.append(0)
+        if self._pa.ana_param_ignore_last_CheckBox.isChecked():
+            laser_ignore_list.append(-1)
+        alternating = self._pa.ana_param_alternating_CheckBox.isChecked()
+        num_of_lasers = self._pa.ana_param_num_laser_pulse_SpinBox.value()
+        controlled_vals_start = self._pa.ana_param_x_axis_start_ScienDSpinBox.value()
+        controlled_vals_incr = self._pa.ana_param_x_axis_inc_ScienDSpinBox.value()
+        laser_trigger_delay = self._as.ana_param_lasertrigger_delay_ScienDSpinBox.value()
+        # FIXME: properly implement sequence_length_s
+        sequence_length_s = self._pulsed_master_logic._measurement_logic.sequence_length_s
+        num_of_ticks = num_of_lasers - len(laser_ignore_list)
+        if alternating:
+            num_of_ticks //= 2
+        controlled_vals = np.arange(controlled_vals_start,
+                                    controlled_vals_start + (controlled_vals_incr * num_of_ticks) - (controlled_vals_incr / 2),
+                                    controlled_vals_incr)
+
+        self._pulsed_master_logic.measurement_sequence_settings_changed(controlled_vals,
+                                                                        num_of_lasers,
+                                                                        sequence_length_s,
+                                                                        laser_ignore_list,
+                                                                        alternating,
+                                                                        laser_trigger_delay)
+        return
+
+    def measurement_sequence_settings_updated(self, controlled_vals, number_of_lasers,
+                                              sequence_length_s, laser_ignore_list, alternating,
+                                              laser_trigger_delay):
+        """
+
+        @param controlled_vals:
+        @param number_of_lasers:
+        @param sequence_length_s:
+        @param laser_ignore_list:
+        @param alternating:
+        @param laser_trigger_delay:
+        @return:
+        """
+        # block signals
+        self._pa.ana_param_ignore_first_CheckBox.blockSignals(True)
+        self._pa.ana_param_ignore_last_CheckBox.blockSignals(True)
+        self._pa.ana_param_alternating_CheckBox.blockSignals(True)
+        self._pa.ana_param_num_laser_pulse_SpinBox.blockSignals(True)
+        self._pa.ana_param_x_axis_start_ScienDSpinBox.blockSignals(True)
+        self._pa.ana_param_x_axis_inc_ScienDSpinBox.blockSignals(True)
+        self._as.ana_param_lasertrigger_delay_ScienDSpinBox.blockSignals(True)
+        self._pe.laserpulses_ComboBox.blockSignals(True)
+        # set widgets
+        self._pa.ana_param_ignore_first_CheckBox.setChecked(0 in laser_ignore_list)
+        self._pa.ana_param_ignore_last_CheckBox.setChecked(-1 in laser_ignore_list)
+        self._pa.ana_param_alternating_CheckBox.setChecked(alternating)
+        self._pa.ana_param_num_laser_pulse_SpinBox.setValue(number_of_lasers)
+        self._as.ana_param_lasertrigger_delay_ScienDSpinBox.setValue(laser_trigger_delay)
+        self._pa.ana_param_x_axis_start_ScienDSpinBox.setValue(controlled_vals[0])
+        self._pa.ana_param_x_axis_inc_ScienDSpinBox.setValue(
+            (controlled_vals[-1] - controlled_vals[0]) / (len(controlled_vals)-1))
+        self._pe.laserpulses_ComboBox.addItems([str(i) for i in range(number_of_lasers+1)])
+        # change plots accordingly
+        if alternating:
+            if self.signal_image2 not in self._pa.pulse_analysis_PlotWidget.items():
+                self._pa.pulse_analysis_PlotWidget.addItem(self.signal_image2)
+            if self.signal_image_error_bars in self._pa.pulse_analysis_PlotWidget.items() and self.signal_image_error_bars2 not in self._pa.pulse_analysis_PlotWidget.items():
+                self._pa.pulse_analysis_PlotWidget.addItem(self.signal_image_error_bars2)
+            if self.measuring_error_image2 not in self._pe.measuring_error_PlotWidget.items():
+                self._pe.measuring_error_PlotWidget.addItem(self.measuring_error_image2)
+        else:
+            if self.signal_image2 in self._pa.pulse_analysis_PlotWidget.items():
+                self._pa.pulse_analysis_PlotWidget.removeItem(self.signal_image2)
+            if self.signal_image_error_bars2 in self._pa.pulse_analysis_PlotWidget.items():
+                self._pa.pulse_analysis_PlotWidget.removeItem(self.signal_image_error_bars2)
+            if self.measuring_error_image2 in self._pe.measuring_error_PlotWidget.items():
+                self._pe.measuring_error_PlotWidget.removeItem(self.measuring_error_image2)
+        # unblock signals
+        self._pa.ana_param_ignore_first_CheckBox.blockSignals(False)
+        self._pa.ana_param_ignore_last_CheckBox.blockSignals(False)
+        self._pa.ana_param_alternating_CheckBox.blockSignals(False)
+        self._pa.ana_param_num_laser_pulse_SpinBox.blockSignals(False)
+        self._pa.ana_param_x_axis_start_ScienDSpinBox.blockSignals(False)
+        self._pa.ana_param_x_axis_inc_ScienDSpinBox.blockSignals(False)
+        self._as.ana_param_lasertrigger_delay_ScienDSpinBox.blockSignals(False)
+        self._pe.laserpulses_ComboBox.blockSignals(False)
+        return
+
+    def toggle_settings_editor(self):
+        """ Shows or hides input widgets which are necessary if the x axis id defined or not."""
+        if not self._pa.ana_param_invoke_settings_CheckBox.isChecked():
+            self._pa.ana_param_x_axis_start_ScienDSpinBox.setEnabled(True)
+            self._pa.ana_param_x_axis_inc_ScienDSpinBox.setEnabled(True)
+            self._pa.ana_param_num_laser_pulse_SpinBox.setEnabled(True)
+            self._pa.ana_param_record_length_SpinBox.setEnabled(True)
+        else:
+            self._pa.ana_param_x_axis_start_ScienDSpinBox.setEnabled(False)
+            self._pa.ana_param_x_axis_inc_ScienDSpinBox.setEnabled(False)
+            self._pa.ana_param_num_laser_pulse_SpinBox.setEnabled(False)
+            self._pa.ana_param_record_length_SpinBox.setEnabled(False)
+        return
+
+    def toggle_error_bars(self):
+        """
+
+        @return:
+        """
+        show_bars = self._pa.ana_param_errorbars_CheckBox.isChecked()
+        is_alternating = self.signal_image2 in self._pa.pulse_analysis_PlotWidget.items()
+        if show_bars:
+            if self.signal_image_error_bars not in self._pa.pulse_analysis_PlotWidget.items():
+                self._pa.pulse_analysis_PlotWidget.addItem(self.signal_image_error_bars)
+            if is_alternating and self.signal_image_error_bars2 not in self._pa.pulse_analysis_PlotWidget.items():
+                self._pa.pulse_analysis_PlotWidget.addItem(self.signal_image_error_bars2)
+        else:
+            if self.signal_image_error_bars in self._pa.pulse_analysis_PlotWidget.items():
+                self._pa.pulse_analysis_PlotWidget.removeItem(self.signal_image_error_bars)
+            if is_alternating and self.signal_image_error_bars2 in self._pa.pulse_analysis_PlotWidget.items():
+                self._pa.pulse_analysis_PlotWidget.removeItem(self.signal_image_error_bars2)
+        return
+
+    # def change_second_plot(self):
+    #     """ This method handles the second plot"""
+    #     if self._mw.second_plot_ComboBox.currentText()=='None':
+    #         self._mw.second_plot_GroupBox.setVisible(False)
+    #     else:
+    #         self._mw.second_plot_GroupBox.setVisible(True)
+    #
+    #         # Here FFT is seperated from the other option. The reason for that
+    #         # is preventing of code doubling
+    #         if self._mw.second_plot_ComboBox.currentText() == 'FFT':
+    #             fft_x, fft_y = self._pulsed_meas_logic.compute_fft()
+    #             self.second_plot_image.setData(fft_x, fft_y)
+    #             self._mw.pulse_analysis_second_PlotWidget.setLogMode(x=False, y=False)
+    #
+    #             self._mw.pulse_analysis_second_PlotWidget.setLabel(axis='bottom',
+    #                                                                text=self._as.ana_param_second_plot_x_axis_name_LineEdit.text(),
+    #                                                                units=self._as.ana_param_second_plot_x_axis_unit_LineEdit.text())
+    #             self._mw.pulse_analysis_second_PlotWidget.setLabel(axis='left',
+    #                                                                text=self._as.ana_param_second_plot_y_axis_name_LineEdit.text(),
+    #                                                                units=self._as.ana_param_second_plot_y_axis_unit_LineEdit.text())
+    #
+    #         else:
+    #             #FIXME: Is not working when there is a 0 in the values, therefore ignoring the first measurment point
+    #             self.second_plot_image.setData(self._pulsed_meas_logic.signal_plot_x[1:], self._pulsed_meas_logic.signal_plot_y[1:])
+    #
+    #             if self._as.ana_param_second_plot_x_axis_name_LineEdit.text()== '':
+    #                 self._mw.pulse_analysis_second_PlotWidget.setLabel(axis='left',
+    #                                                                    text=self._as.ana_param_y_axis_name_LineEdit.text(),
+    #                                                                    units=self._as.ana_param_y_axis_unit_LineEdit.text())
+    #                 self._mw.pulse_analysis_second_PlotWidget.setLabel(axis='bottom',
+    #                                                                    text=self._as.ana_param_x_axis_name_LineEdit.text(),
+    #                                                                    units=self._as.ana_param_x_axis_unit_LineEdit.text())
+    #
+    #             else:
+    #                 self._mw.pulse_analysis_second_PlotWidget.setLabel(axis='bottom',
+    #                                                                    text=self._as.ana_param_second_plot_x_axis_name_LineEdit.text(),
+    #                                                                    units=self._as.ana_param_second_plot_x_axis_unit_LineEdit.text())
+    #                 self._mw.pulse_analysis_second_PlotWidget.setLabel(axis='left',
+    #                                                                    text=self._as.ana_param_second_plot_y_axis_name_LineEdit.text(),
+    #                                                                    units=self._as.ana_param_second_plot_y_axis_unit_LineEdit.text())
+    #
+    #             if self._mw.second_plot_ComboBox.currentText() == 'unchanged data':
+    #                 self._mw.pulse_analysis_second_PlotWidget.setLogMode(x=False, y=False)
+    #
+    #             elif self._mw.second_plot_ComboBox.currentText() == 'Log(x)':
+    #                 self._mw.pulse_analysis_second_PlotWidget.setLogMode(x=True, y=False)
+    #
+    #             elif self._mw.second_plot_ComboBox.currentText() == 'Log(y)':
+    #                 self._mw.pulse_analysis_second_PlotWidget.setLogMode(x=False,y=True)
+    #
+    #             elif self._mw.second_plot_ComboBox.currentText() == 'Log(x)&Log(y)':
+    #                 self._mw.pulse_analysis_second_PlotWidget.setLogMode(x=True, y=True)
+
+    def measurement_timer_changed(self):
+        """ This method handles the analysis timing"""
+        timer_interval = self._pa.time_param_ana_periode_DoubleSpinBox.value()
+        self._pulsed_master_logic.analysis_interval_changed(timer_interval)
+        return
+
+    def measurement_timer_updated(self, timer_interval_s):
+        """
+
+        @param timer_interval_s:
+        @return:
+        """
+        # block signals
+        self._pa.time_param_ana_periode_DoubleSpinBox.blockSignals(True)
+        # set widget
+        self._pa.time_param_ana_periode_DoubleSpinBox.setValue(timer_interval_s)
+        # unblock signals
+        self._pa.time_param_ana_periode_DoubleSpinBox.blockSignals(False)
+        return
+
+    def conv_std_dev_changed(self):
+        """
+        Uodate new value of standard deviation of gaussian filter
+        """
+        # block signals
+        self._pe.slider_conv_std_dev.blockSignals(True)
+        # set widgets
+        std_dev = self._pe.conv_std_dev.value()
+        self._pe.slider_conv_std_dev.setValue(std_dev)
+        # unblock signals
+        self._pe.slider_conv_std_dev.blockSignals(False)
+
+        self._pulsed_master_logic.analysis_method_changed(std_dev)
+        return
+
+    def slider_conv_std_dev_changed(self):
+        """
+        Uodate new value of standard deviation of gaussian filter
+        from slider
+        """
+        # block signals
+        self._pe.conv_std_dev.blockSignals(True)
+        # set widgets
+        std_dev = self._pe.slider_conv_std_dev.value()
+        self._pe.conv_std_dev.setValue(std_dev)
+        # unblock signals
+        self._pe.conv_std_dev.blockSignals(False)
+
+        self._pulsed_master_logic.analysis_method_changed(std_dev)
+        return
+
+    def analysis_method_updated(self, gaussfilt_std_dev):
+        """
+
+        @param gaussfilt_std_dev:
+        @return:
+        """
+        # block signals
+        self._pe.slider_conv_std_dev.blockSignals(True)
+        self._pe.conv_std_dev.blockSignals(True)
+        # set widgets
+        self._pe.slider_conv_std_dev.setValue(gaussfilt_std_dev)
+        self._pe.conv_std_dev.setValue(gaussfilt_std_dev)
+        # unblock signals
+        self._pe.slider_conv_std_dev.blockSignals(False)
+        self._pe.conv_std_dev.blockSignals(False)
+        return
+
+    def analysis_windows_changed(self):
+        """
+
+        @return:
+        """
+        # block signals
+        self.sig_start_line.blockSignals(True)
+        self.sig_end_line.blockSignals(True)
+        self.ref_start_line.blockSignals(True)
+        self.ref_end_line.blockSignals(True)
+        # get data
+        sig_start = self._pe.extract_param_ana_window_start_SpinBox.value()
+        sig_length = self._pe.extract_param_ana_window_width_SpinBox.value()
+        ref_start = self._pe.extract_param_ref_window_start_SpinBox.value()
+        ref_length = self._pe.extract_param_ref_window_width_SpinBox.value()
+        # update plots
+        self.sig_start_line.setValue(sig_start)
+        self.sig_end_line.setValue(sig_start + sig_length)
+        self.ref_start_line.setValue(ref_start)
+        self.ref_end_line.setValue(ref_start + ref_length)
+        # unblock signals
+        self.sig_start_line.blockSignals(False)
+        self.sig_end_line.blockSignals(False)
+        self.ref_start_line.blockSignals(False)
+        self.ref_end_line.blockSignals(False)
+
+        self._pulsed_master_logic.analysis_windows_changed(sig_start, sig_length, ref_start,
+                                                           ref_length)
+        return
+
+    def analysis_windows_line_changed(self):
+        """
+
+        @return:
+        """
+        # block signals
+        self._pe.extract_param_ana_window_start_SpinBox.blockSignals(True)
+        self._pe.extract_param_ana_window_width_SpinBox.blockSignals(True)
+        self._pe.extract_param_ref_window_start_SpinBox.blockSignals(True)
+        self._pe.extract_param_ref_window_width_SpinBox.blockSignals(True)
+        # get data
+        sig_start = self.sig_start_line.value()
+        sig_length = self.sig_end_line.value() - sig_start
+        ref_start = self.ref_start_line.value()
+        ref_length = self.ref_end_line.value() - ref_start
+        # set widgets
+        self._pe.extract_param_ana_window_start_SpinBox.setValue(sig_start)
+        self._pe.extract_param_ana_window_width_SpinBox.setValue(sig_length)
+        self._pe.extract_param_ref_window_start_SpinBox.setValue(ref_start)
+        self._pe.extract_param_ref_window_width_SpinBox.setValue(ref_length)
+        # unblock signals
+        self._pe.extract_param_ana_window_start_SpinBox.blockSignals(False)
+        self._pe.extract_param_ana_window_width_SpinBox.blockSignals(False)
+        self._pe.extract_param_ref_window_start_SpinBox.blockSignals(False)
+        self._pe.extract_param_ref_window_width_SpinBox.blockSignals(False)
+        return
+
+    def analysis_windows_updated(self, sig_start, sig_length, ref_start, ref_length):
+        """
+
+        @param sig_start:
+        @param sig_length:
+        @param ref_start:
+        @param ref_length:
+        @return:
+        """
+        # block signals
+        self._pe.extract_param_ana_window_start_SpinBox.blockSignals(True)
+        self._pe.extract_param_ana_window_width_SpinBox.blockSignals(True)
+        self._pe.extract_param_ref_window_start_SpinBox.blockSignals(True)
+        self._pe.extract_param_ref_window_width_SpinBox.blockSignals(True)
+        # set widgets
+        self._pe.extract_param_ana_window_start_SpinBox.setValue(sig_start)
+        self._pe.extract_param_ana_window_width_SpinBox.setValue(sig_length)
+        self._pe.extract_param_ref_window_start_SpinBox.setValue(ref_start)
+        self._pe.extract_param_ref_window_width_SpinBox.setValue(ref_length)
+        # update plots
+        self.sig_start_line.setValue(sig_start)
+        self.sig_end_line.setValue(sig_start + sig_length)
+        self.ref_start_line.setValue(ref_start)
+        self.ref_end_line.setValue(ref_start + ref_length)
+        # unblock signals
+        self._pe.extract_param_ana_window_start_SpinBox.blockSignals(False)
+        self._pe.extract_param_ana_window_width_SpinBox.blockSignals(False)
+        self._pe.extract_param_ref_window_start_SpinBox.blockSignals(False)
+        self._pe.extract_param_ref_window_width_SpinBox.blockSignals(False)
+        return
+
+    def laser_to_show_changed(self):
+        """
+
+        @return:
+        """
+        current_laser = self._pe.laserpulses_ComboBox.currentText()
+        show_raw_data = self._pe.laserpulses_display_raw_CheckBox.isChecked()
+        if current_laser == 'sum':
+            show_laser_index = 0
+        else:
+            show_laser_index = int(current_laser)
+
+        self._pulsed_master_logic.laser_to_show_changed(show_laser_index, show_raw_data)
+        return
+
+    def laser_to_show_updated(self, laser_index, show_raw_data):
+        """
+
+        @param laser_index:
+        @param show_raw_data:
+        @return:
+        """
+        # block signals
+        self._pe.laserpulses_ComboBox.blockSignals(True)
+        self._pe.laserpulses_display_raw_CheckBox.blockSignals(True)
+        # set widgets
+        self._pe.laserpulses_ComboBox.setCurrentIndex(laser_index)
+        self._pe.laserpulses_display_raw_CheckBox.setChecked(show_raw_data)
+        # unblock signals
+        self._pe.laserpulses_ComboBox.blockSignals(False)
+        self._pe.laserpulses_display_raw_CheckBox.blockSignals(False)
+        return
+
+    def laser_data_updated(self, x_data, y_data):
+        """
+
+        @param x_data:
+        @param y_data:
+        @return:
+        """
+        self.lasertrace_image.setData(x=x_data, y=y_data)
+        return
+
+
+
+    ###########################################################################
+    ###         Methods related to the Tab 'Sequence Generator':            ###
+    ###########################################################################
+    def pulser_on_off_clicked(self, checked):
+        """ Manually switch the pulser output on/off. """
+        checked = self._mw.pulser_on_off_PushButton.isChecked()
+        if checked:
+            self._mw.pulser_on_off_PushButton.setText('Pulser OFF')
+            self._pulsed_master_logic.toggle_pulse_generator(True)
+        else:
+            self._mw.pulser_on_off_PushButton.setText('Pulser ON')
+            self._pulsed_master_logic.toggle_pulse_generator(False)
+        return
+
+    def pulser_running_updated(self, is_running):
+        """
+
+        @param is_running:
+        @return:
+        """
+        # block signals
+        self._mw.pulser_on_off_PushButton.blockSignals(True)
+        # set widgets
+        if is_running:
+            self._mw.pulser_on_off_PushButton.setText('Pulser OFF')
+            if not self._mw.pulser_on_off_PushButton.isChecked():
+                self._mw.pulser_on_off_PushButton.toggle()
+        else:
+            self._mw.pulser_on_off_PushButton.setText('Pulser ON')
+            if self._mw.pulser_on_off_PushButton.isChecked():
+                self._mw.pulser_on_off_PushButton.toggle()
+        # unblock signals
+        self._mw.pulser_on_off_PushButton.blockSignals(False)
+        return
+
+    def clear_pulser_clicked(self):
+        """ Delete all loaded files in the device's current memory. """
+        self._pulsed_master_logic.clear_pulse_generator()
+        return
+
+    def upload_ensemble_clicked(self):
+        """
+
+        @return:
+        """
+        # Get the ensemble name from the ComboBox
+        ensemble_name = self._pg.gen_ensemble_ComboBox.currentText()
+        # Upload the ensemble via logic module
+        self._pulsed_master_logic.upload_asset(ensemble_name)
+        # disable button
+        self._pg.upload_ensemble_PushButton.setEnabled(False)
+        self._pg.load_ensemble_PushButton.setEnabled(False)
+        return
+
+    # def upload_sequence_clicked(self):
+    #     """
+    #
+    #     @return:
+    #     """
+    #     # Get the sequence name from the ComboBox
+    #     seq_name = self._pg.gen_sequence_ComboBox.currentText()
+    #     # Upload the asset via logic module
+    #     self._pulsed_master_logic.upload_asset(seq_name)
+    #     # disable button
+    #     self._pg.upload_sequence_PushButton.setEnabled(False)
+    #     self._pg.load_sequence_PushButton.setEnabled(False)
+    #     return
+
+    def update_uploaded_assets(self, asset_names_list):
+        """
+
+        @param asset_names_list:
+        @return:
+        """
+        # enable buttons
+        # self._pg.upload_sequence_PushButton.setEnabled(True)
+        self._pg.upload_ensemble_PushButton.setEnabled(True)
+        self._pg.load_ensemble_PushButton.setEnabled(True)
+        # self._pg.load_sequence_PushButton.setEnabled(True)
+        return
+
+    def load_ensemble_clicked(self):
+        """
+
+        @return:
+        """
+        # disable button
+        self._pg.load_ensemble_PushButton.setEnabled(False)
+        # Get the asset name to be uploaded from the ComboBox
+        asset_name = self._pg.gen_ensemble_ComboBox.currentText()
+        # Get invoke settings CheckBox status
+        invoke_settings = self._pa.ana_param_invoke_settings_CheckBox.isChecked()
+        # Load asset into channles via logic module
+        self._pulsed_master_logic.load_asset_into_channels(asset_name, {}, invoke_settings)
+        return
+
+    # def load_sequence_clicked(self):
+    #     """
+    #
+    #     @return:
+    #     """
+    #     # disable button
+    #     self._pg.load_sequence_PushButton.setEnabled(False)
+    #     # Get the asset name to be uploaded from the ComboBox
+    #     asset_name = self._pg.gen_sequence_ComboBox.currentText()
+    #     # Load asset into channles via logic module
+    #     self._pulsed_master_logic.load_asset_into_channels(asset_name, {}, False)
+    #     return
+
+    def update_loaded_asset(self, asset_name, asset_type):
+        """ Check the current loaded asset from the logic and update the display. """
+        label = self._mw.current_loaded_asset_Label
+        if asset_name is None:
+            label.setText(asset_type)
+        elif asset_type == 'PulseBlockEnsemble' or asset_type == 'PulseSequence':
+            label.setText('  {0} ({1})'.format(asset_name, asset_type))
+        else:
+            label.setText('  Unknown asset type')
+        # enable buttons
+        if asset_type == 'PulseBlockEnsemble':
+            self._pg.load_ensemble_PushButton.setEnabled(True)
+        elif asset_type == 'PulseSequence':
+            self._pg.load_sequence_PushButton.setEnabled(True)
+        return
+
+
+    # def save_plots(self):
+    #     """ Save plot from analysis graph as a picture. """
+    #     timestamp = datetime.datetime.now()
+    #     filetag = self._mw.save_tag_LineEdit.text()
+    #     filepath = self._save_logic.get_path_for_module(module_name='PulsedMeasurement')
+    #     if len(filetag) > 0:
+    #         filename = os.path.join(filepath, '{}_{}_pulsed'.format(timestamp.strftime('%Y%m%d-%H%M-%S'), filetag))
+    #     else:
+    #         filename = os.path.join(filepath, '{}_pulsed'.format(timestamp.strftime('%Y%m%d-%H%M-%S')))
+    #
+    #     # print(type(self._mw.second_plot_ComboBox.currentText()), self._mw.second_plot_ComboBox.currentText())
+    #     # pulse plot
+    #     # exporter = pg.exporters.SVGExporter(self._pa.pulse_analysis_PlotWidget.plotItem.scene())
+    #     # exporter.export(filename+'.svg')
+    #     #
+    #     # # auxiliary plot
+    #     # if 'None' not in self._mw.second_plot_ComboBox.currentText():
+    #     #     exporter_aux = pg.exporters.SVGExporter(self._mw.pulse_analysis_second_PlotWidget.plotItem.scene())
+    #     #     exporter_aux.export(filename + '_aux' + '.svg')
+    #
+    #     self._pulsed_meas_logic._save_data(filetag, timestamp)
+
+
+

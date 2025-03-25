@@ -1,0 +1,806 @@
+import itertools
+import logging
+import math
+import os
+import pickle
+import uuid
+import IPython.parallel
+import constants
+import molns_cloudpickle as cloudpickle
+
+from map_and_aggregate import map_and_aggregate
+from molns_exceptions import MolnsUtilException
+from run_ensemble import run_ensemble
+from run_ensemble_map_aggregate import run_ensemble_map_and_aggregate
+from storage_providers import SharedStorage, PersistentStorage
+from utils import Log, clean_up, update_progressbar, display_progressbar, builtin_reducer_mean, generate_seed_base, \
+    builtin_aggregator_list_append, builtin_reducer_default, builtin_aggregator_sum_and_sum2, builtin_aggregator_add, \
+    builtin_reducer_mean_variance, get_unpickled_result
+
+"""
+  Utility module for MOLNs.
+
+  molnsutil contains implementations of a persistent storage API for
+  staging objects to an Object Store in the clouds supported by MOLNs.
+  This can be used in MOLNs to write variables that are persistent
+  between sessions, provides a convenient way to get data out of the
+  system, and it also provides a means during parallel computations to
+  stage data so that it is visible to all compute engines, in contrast
+  to using the local scratch space on the engines.
+
+  molnsutil also contains parallel implementations of common Monte Carlo
+  computational workflows, such as the generation of ensembles and
+  estimation of moments.
+
+  Molnsutil will work for any object that is serializable (e.g. with
+  pickle) and that has a run() function with the arguments 'seed' and
+  'number_of_trajectories'.  Example:
+
+   class MyClass():
+       def run(seed, number_of_trajectories):
+           # return an object or list
+
+  Both the class and the results return from run() must be pickle-able.
+
+"""
+logging.basicConfig(filename="boto.log", level=logging.DEBUG)
+
+
+# s3.json is a JSON file that contains the following info:
+#
+#     'aws_access_key_id' : AWS access key
+#     'aws_secret_access_key' : AWS private key
+#   s3.json needs to be created and put in .molns/s3.json in the root of the home directory.
+
+class DistributedEnsemble:
+    """ A class to provide an API for execution of a distributed ensemble. """
+
+    def __init__(self, model_class=None, parameters=None, qsub=False, client=None, num_engines=None, storage_mode=None):
+        """ Constructor """
+        self.my_class_name = 'DistributedEnsemble'
+        self.model_class = cloudpickle.dumps(model_class)
+        self.parameters = [parameters]
+        self.number_of_trajectories = 0
+        self.seed_base = generate_seed_base()
+        self.storage_mode = storage_mode
+        # A chunk list
+        self.result_list = {}
+        self.qsub = qsub
+
+        self.log = Log()
+
+        if self.qsub is False:
+            # Set the Ipython.parallel client
+            self.num_engines = num_engines
+            self._update_client(client)
+
+    # --------------------------
+    def save_state(self, name):
+        """ Serialize the state of the ensemble, for persistence beyond memory."""
+        state = {}
+        state['model_class'] = self.model_class
+        state['parameters'] = self.parameters
+        state['number_of_trajectories'] = self.number_of_trajectories
+        state['seed_base'] = self.seed_base
+        state['result_list'] = self.result_list
+        state['storage_mode'] = self.storage_mode
+        if not os.path.isdir('.molnsutil'):
+            os.makedirs('.molnsutil')
+        with open('.molnsutil/{1}-{0}'.format(name, self.my_class_name)) as fd:
+            pickle.dump(state, fd)
+
+    def load_state(self, name):
+        """ Recover the state of an ensemble from a previous save. """
+        with open('.molnsutil/{1}-{0}'.format(name, self.my_class_name)) as fd:
+            state = pickle.load(fd)
+        if state['model_class'] is not self.model_class:
+            raise MolnsUtilException("Can only load state of a class that is identical to the original class")
+        self.parameters = state['parameters']
+        self.number_of_trajectories = state['number_of_trajectories']
+        self.seed_base = state['seed_base']
+        self.result_list = state['result_list']
+        self.storage_mode = state['storage_mode']
+
+    def _set_pparams_paramsetids_presultlist(self, num_chunks, pparams, param_set_ids, presult_list=None,
+                                             chunk_size=None):
+        if not isinstance(pparams, list) or not isinstance(param_set_ids, list) or \
+                (presult_list is not None and not isinstance(presult_list, list)) or \
+                (presult_list is not None and chunk_size is None):
+            raise MolnsUtilException("Unexpected arguments. Require pparams, param_set_ids (and presult_list) to be "
+                                     "of type list. chunk_size cannot be None is presult_list is not None.")
+
+        for ide, param in enumerate(self.parameters):
+            param_set_ids.extend([ide] * num_chunks)
+            pparams.extend([param] * num_chunks)
+            if presult_list is not None:
+                for i in range(num_chunks):
+                    presult_list.append(self.result_list[ide][i * chunk_size:(i + 1) * chunk_size])
+
+    def _get_seed_list(self, num, number_of_trajectories, chunk_size):
+        seed_list = []
+        for _ in range(num):
+            # need to do it this way cause the number of run per chunk might not be even
+            seed_list.extend(range(self.seed_base, self.seed_base + number_of_trajectories, chunk_size))
+            self.seed_base += number_of_trajectories
+        return seed_list
+
+    def _ipython_map_aggregate_stored_realizations(self, mapper, aggregator=None, cache_results=False, divid=None,
+                                                   chunk_size=None):
+
+        self.log.write_log(
+            "Running mapper & aggregator on the result objects (number of results={0}, chunk size={1})".format(
+                self.number_of_trajectories * len(self.parameters), chunk_size))
+
+        # chunks per parameter
+        num_chunks = int(math.ceil(self.number_of_trajectories / float(chunk_size)))
+        chunks = [chunk_size] * (num_chunks - 1)
+        chunks.append(self.number_of_trajectories - chunk_size * (num_chunks - 1))
+        # total chunks
+        pchunks = chunks * len(self.parameters)
+        num_pchunks = num_chunks * len(self.parameters)
+        pparams = []
+        param_set_ids = []
+        presult_list = []
+        self._set_pparams_paramsetids_presultlist(num_chunks, pparams, param_set_ids, presult_list, chunk_size)
+
+        results = self.lv.map_async(map_and_aggregate, presult_list, param_set_ids, [mapper] * num_pchunks,
+                                    [aggregator] * num_pchunks, [cache_results] * num_pchunks)
+
+        mapped_results = {}
+        self._set_ipython_mapped_results(mapped_results, results, divid)
+
+        return mapped_results
+
+    def _qsub_map_aggregate_stored_realizations(self, mapper, realizations_storage_directory, aggregator=None,
+                                                chunk_size=None, divid=None):
+
+        self.log.write_log("Running mapper & aggregator on the result objects (number of results={0}, chunk size={1})"
+                           .format(self.number_of_trajectories * len(self.parameters), chunk_size))
+
+        counter = 0
+        random_string = str(uuid.uuid4())
+        if not os.path.isdir(realizations_storage_directory):
+            raise MolnsUtilException("Directory {0} does not exist.".format(realizations_storage_directory))
+
+        base_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "temp_" + random_string)
+        job_name_prefix = "ps_job_" + random_string[:8] + "_"
+        dirs = []
+        containers = []
+
+        # chunks per parameter
+        num_chunks = int(math.ceil(self.number_of_trajectories / float(chunk_size)))
+        chunks = [chunk_size] * (num_chunks - 1)
+        chunks.append(self.number_of_trajectories - chunk_size * (num_chunks - 1))
+        # total chunks
+        pchunks = chunks * len(self.parameters)
+        num_pchunks = num_chunks * len(self.parameters)
+        pparams = []
+        param_set_ids = []
+        presult_list = []
+        self._set_pparams_paramsetids_presultlist(num_chunks, pparams, param_set_ids, presult_list, chunk_size)
+
+        for result, pndx in zip(presult_list, param_set_ids):
+            # create temp directory for this job.
+            job_name = job_name_prefix + str(counter)
+            temp_job_directory = os.path.join(base_dir, job_name + "/")
+            if not os.path.exists(temp_job_directory):
+                os.makedirs(temp_job_directory)
+
+            # copy pre-computed realizations to working directory.
+            import shutil
+            for i, filename in enumerate(result):
+                shutil.copyfile(os.path.join(realizations_storage_directory, filename),
+                                os.path.join(temp_job_directory, filename))
+
+            unpickled_list = [result, pndx, mapper, aggregator, False]
+
+            self._submit_qsub_job(constants.map_and_aggregate_job_file, job_name, unpickled_list, containers, dirs,
+                                  temp_job_directory)
+
+            counter += 1
+
+        keep_dirs = self._wait_for_all_results_to_return(wait_for_dirs=dirs, divid=divid)
+
+        remove_dirs = [directory for directory in dirs if directory not in keep_dirs]
+        mapped_results = {}
+        self._set_qsub_mapped_results(remove_dirs, mapped_results)
+
+        self.log.write_log("Cleaning up..")
+
+        # remove temporary files and finished containers. Keep all files that record errors.
+        dirs_to_delete = remove_dirs
+        if len(keep_dirs) == 0:
+            dirs_to_delete = [base_dir]
+
+        clean_up(dirs_to_delete=dirs_to_delete, containers_to_delete=containers)
+
+        return mapped_results
+
+    def _ipython_run_ensemble_map_aggregate(self, mapper, number_of_trajectories=None, chunk_size=None, divid=None,
+                                            aggregator=None):
+        # If we don't store the realizations (or use the stored ones)
+        self.log.write_log(
+            "Generating {0} realizations of the model, running mapper & aggregator (chunk size={1})".format(
+                number_of_trajectories, chunk_size))
+
+        # chunks per parameter
+        num_chunks = int(math.ceil(number_of_trajectories / float(chunk_size)))
+        chunks = [chunk_size] * (num_chunks - 1)
+        chunks.append(number_of_trajectories - chunk_size * (num_chunks - 1))
+        # total chunks
+        pchunks = chunks * len(self.parameters)
+        num_pchunks = num_chunks * len(self.parameters)
+
+        pparams = []
+        param_set_ids = []
+        self._set_pparams_paramsetids_presultlist(num_chunks, pparams, param_set_ids)
+
+        seed_list = self._get_seed_list(len(self.parameters), number_of_trajectories, chunk_size)
+
+        results = self.lv.map_async(run_ensemble_map_and_aggregate, [self.model_class] * num_pchunks, pparams,
+                                    param_set_ids, seed_list, pchunks, [mapper] * num_pchunks,
+                                    [aggregator] * num_pchunks)
+
+        mapped_results = {}
+        self._set_ipython_mapped_results(mapped_results, results, divid)
+
+        return mapped_results
+
+    def _wait_for_all_results_to_return(self, wait_for_dirs, progress_bar=False, divid=None):
+        """ Wait for all jobs to complete. Return list of directories whose corresponding jobs finished
+        unsuccessfully."""
+
+        import time
+
+        dirs = wait_for_dirs[:]
+        completed_jobs = 0
+        successful_jobs = 0
+        keep_dirs = []
+        total_jobs = len(dirs)
+
+        self.log.write_log("Awaiting all results...")
+
+        while len(dirs) > 0:
+            for directory in dirs:
+                output_file = os.path.join(directory, constants.job_output_file_name)
+                completed_file = os.path.join(directory, constants.job_complete_file_name)
+
+                if os.path.exists(output_file):
+                    dirs.remove(directory)
+                    successful_jobs += 1
+                    completed_jobs += 1
+                    self.log.write_log("{0} exists".format(output_file))
+
+                elif os.path.exists(completed_file):
+                    if os.path.exists(output_file):  # There could be a race condition here.
+                        continue
+                    keep_dirs.append(directory)
+                    dirs.remove(directory)
+                    completed_jobs += 1
+
+                else:
+                    self.log.write_log("{0} does not exist".format(completed_file))
+                if divid is not None and progress_bar is True:
+                    update_progressbar(divid, completed_jobs, total_jobs)
+            time.sleep(1)
+
+        if completed_jobs > successful_jobs:
+            self.log.write_log(
+                "{0} job(s) did not complete successfully. Their working directories will NOT be deleted."
+                    .format(completed_jobs - successful_jobs))
+
+        return keep_dirs
+
+    def _submit_qsub_job(self, job_program_file, job_name, job_input, containers, dirs, temp_job_directory):
+        import shutil
+        from subprocess import Popen
+
+        # write input file for qsub job.
+        with open(os.path.join(temp_job_directory, constants.job_input_file_name), "wb") as input_file:
+            cloudpickle.dump(job_input, input_file)
+
+        # write job program file.
+        shutil.copyfile(job_program_file, os.path.join(temp_job_directory, constants.qsub_job_name))
+
+        # write package files.
+        shutil.copyfile(constants.molns_cloudpickle_file, os.path.join(temp_job_directory, "molns_cloudpickle.py"))
+        shutil.copyfile(constants.utils_file, os.path.join(temp_job_directory, "utils.py"))
+        shutil.copyfile(constants.storage_providers_file, os.path.join(temp_job_directory, "storage_providers.py"))
+        shutil.copyfile(constants.molns_exceptions_file, os.path.join(temp_job_directory, "molns_exceptions.py"))
+        shutil.copyfile(constants.constants_file, os.path.join(temp_job_directory, "constants.py"))
+
+        # append to list of related job containers
+        containers.append(job_name)
+        # invoke qsub to start container with same name as job_name
+        Popen(['qsub', '-d', temp_job_directory, '-N', job_name, constants.qsub_file], shell=False)
+
+        # append to list of related job directories
+        dirs.append(temp_job_directory)
+
+    @staticmethod
+    def _set_qsub_mapped_results(directories, mapped_results):
+        for directory in directories:
+            unpickled_result = get_unpickled_result(directory)
+            param_set_id = unpickled_result['param_set_id']
+            if param_set_id not in mapped_results:
+                mapped_results[param_set_id] = []
+            if type(unpickled_result['result']) is list:
+                mapped_results[param_set_id].extend(
+                    unpickled_result['result'])  # if a list is returned, extend that list
+            else:
+                mapped_results[param_set_id].append(unpickled_result['result'])
+
+    @staticmethod
+    def _set_ipython_mapped_results(mapped_results, results, divid=None):
+        # We process the results as they arrive.
+        for i, rset in enumerate(results):
+            param_set_id = rset['param_set_id']
+            r = rset['result']
+            if param_set_id not in mapped_results:
+                mapped_results[param_set_id] = []
+            if type(r) is type([]):
+                mapped_results[param_set_id].extend(r)  # if a list is returned, extend that list
+            else:
+                mapped_results[param_set_id].append(r)
+            if divid is not None:
+                update_progressbar(divid, i, len(results))
+
+    def _qsub_run_ensemble_map_aggregate(self, mapper, aggregator=None, number_of_trajectories=None, chunk_size=None,
+                                         divid=None, progress_bar=False):
+        counter = 0
+        random_string = str(uuid.uuid4())
+        base_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "temp_" + random_string)
+        job_name_prefix = "ps_job_" + random_string[:8] + "_"
+        dirs = []
+        containers = []
+
+        self.log.write_log("Generating {0} realizations of the model, running mapper & aggregator (chunk size={1})"
+                           .format(number_of_trajectories, chunk_size))
+
+        if aggregator is None:
+            aggregator = builtin_aggregator_list_append
+
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
+
+        num_chunks = int(math.ceil(number_of_trajectories / float(chunk_size)))
+        seed_list = self._get_seed_list(len(self.parameters), number_of_trajectories, chunk_size)
+        pparams = []
+        param_set_ids = []
+        self._set_pparams_paramsetids_presultlist(num_chunks=num_chunks, pparams=pparams, param_set_ids=param_set_ids)
+
+        for pndx, pset, seed in zip(param_set_ids, pparams, seed_list):
+
+            unpickled_list = [chunk_size, seed, self.model_class, mapper, aggregator, pset, pndx]
+            job_name = job_name_prefix + str(counter)
+
+            # create temp directory for this job.
+            temp_job_directory = os.path.join(base_dir, job_name + "/")
+            if not os.path.exists(temp_job_directory):
+                os.makedirs(temp_job_directory)
+
+            self._submit_qsub_job(constants.run_ensemble_map_and_aggregate_job_file, job_name, unpickled_list,
+                                  containers,
+                                  dirs, temp_job_directory)
+
+            counter += 1
+
+        keep_dirs = self._wait_for_all_results_to_return(wait_for_dirs=dirs, progress_bar=progress_bar, divid=divid)
+
+        # Process only the results successfully computed into a format compatible with self.run_reducer.
+        remove_dirs = [directory for directory in dirs if directory not in keep_dirs]
+        mapped_results = {}
+        self._set_qsub_mapped_results(remove_dirs, mapped_results)
+
+        self.log.write_log("Cleaning up..")
+
+        # remove temporary files and finished containers. Keep all files that record errors.
+        dirs_to_delete = remove_dirs
+        if len(keep_dirs) == 0:
+            dirs_to_delete = [base_dir]
+
+        clean_up(dirs_to_delete=dirs_to_delete, containers_to_delete=containers)
+
+        return mapped_results
+
+    def run_reducer(self, reducer, mapped_results):
+        """ Inside the run() function, apply the reducer to all of the mapped-aggregated result values. """
+        return reducer(mapped_results[0], parameters=self.parameters[0])
+
+    def _ipython_generate_and_store_realisations(self, num_pchunks, pparams, param_set_ids, seed_list, pchunks,
+                                                 divid=None, progress_bar=False):
+        if self.storage_mode is None:
+            raise MolnsUtilException("Storage mode is None. Cannot store realizations; aborting.")
+
+        results = self.lv.map_async(run_ensemble, [self.model_class] * num_pchunks, pparams, param_set_ids, seed_list,
+                                    pchunks, [self.storage_mode] * num_pchunks)
+
+        # We process the results as they arrive.
+        for i, ret in enumerate(results):
+            r = ret['filenames']
+            param_set_id = ret['param_set_id']
+            if param_set_id not in self.result_list:
+                self.result_list[param_set_id] = []
+            self.result_list[param_set_id].extend(r)
+            if divid is not None and progress_bar is not False:
+                update_progressbar(divid, i, len(results))
+
+        return {'wall_time': results.wall_time, 'serial_time': results.serial_time}
+
+    def _qsub_generate_and_store_realizations(self, pparams, param_set_ids, seed_list, pchunks, divid=None,
+                                              progress_bar=False):
+        counter = 0
+        random_string = str(uuid.uuid4())
+
+        base_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "realizations_" + random_string)
+
+        job_name_prefix = "ps_job_" + random_string[:8] + "_"
+        dirs = []
+        containers = []
+        job_param_ids = {}
+
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
+
+        if self.storage_mode is not constants.local_storage:
+            raise MolnsUtilException("Storage mode must be local while using qsub.")
+
+        for pndx, pset, seed, pchunk in zip(param_set_ids, pparams, seed_list, pchunks):
+            unpickled_list = [pchunk, seed, self.model_class, pset, pndx, constants.local_storage]
+            job_name = job_name_prefix + str(counter)
+
+            # create temp directory for this job.
+            temp_job_directory = os.path.join(base_dir, job_name + "/")
+            if not os.path.exists(temp_job_directory):
+                os.makedirs(temp_job_directory)
+
+            self._submit_qsub_job(constants.run_ensemble_job_file, job_name, unpickled_list, containers, dirs,
+                                  temp_job_directory)
+
+            job_param_ids[pndx] = temp_job_directory
+            counter += 1
+
+        keep_dirs = self._wait_for_all_results_to_return(wait_for_dirs=dirs, divid=divid, progress_bar=progress_bar)
+
+        remove_dirs = [directory for directory in dirs if directory not in keep_dirs]
+        for i, directory in enumerate(remove_dirs):
+            unpickled_result = get_unpickled_result(directory)
+            r = unpickled_result['filenames']
+            param_set_id = unpickled_result['param_set_id']
+            if param_set_id not in self.result_list:
+                self.result_list[param_set_id] = []
+            self.result_list[param_set_id].extend(r)
+            update_progressbar(divid, i, len(remove_dirs))
+
+        self.log.write_log("Cleaning up..")
+
+        # Arrange for generated files to be available in a know location - base_dir.
+        DistributedEnsemble._post_process(remove_dirs, base_dir)
+
+        # Delete job containers and directories. Preserve base_dir as it contains computed realizations.
+        clean_up(dirs_to_delete=remove_dirs, containers_to_delete=containers)
+
+        return {'wall_time': "unknown", 'serial_time': "unknown", 'realizations_directory': base_dir}
+
+    @staticmethod
+    def _post_process(directories, base_dir):
+        import re
+        import shutil
+        exp = re.compile(r'[0-9a-f-]{36}')
+        for directory in directories:
+            files_in_this_directory = os.listdir(directory)
+            for f in files_in_this_directory:
+                if exp.match(f):
+                    # copy file to parent directory.
+                    shutil.copyfile(os.path.join(directory, f), os.path.join(base_dir, f))
+                    break
+
+    def add_realizations(self, number_of_trajectories=None, chunk_size=None, progress_bar=True):
+        """ Add a number of realizations to the ensemble. """
+
+        if number_of_trajectories is None:
+            raise MolnsUtilException("No number_of_trajectories specified")
+        if type(number_of_trajectories) is not type(1):
+            raise MolnsUtilException("number_of_trajectories must be an integer")
+
+        if chunk_size is None:
+            chunk_size = self._determine_chunk_size(number_of_trajectories)
+
+        if not self.log.verbose:
+            progress_bar = False
+        else:
+            if len(self.parameters) > 1:
+                self.log.write_log(
+                    "Generating {0} realizations of the model at {1} parameter points (chunk size={2})".format(
+                        number_of_trajectories, len(self.parameters), chunk_size))
+            else:
+                self.log.write_log(
+                    "Generating {0} realizations of the model (chunk size={1})".format(number_of_trajectories,
+                                                                                       chunk_size))
+        divid = None
+        if progress_bar:
+            divid = display_progressbar()
+
+        self.number_of_trajectories += number_of_trajectories
+
+        num_chunks = int(math.ceil(number_of_trajectories / float(chunk_size)))
+        chunks = [chunk_size] * (num_chunks - 1)
+        chunks.append(number_of_trajectories - chunk_size * (num_chunks - 1))
+        # total chunks
+        pchunks = chunks * len(self.parameters)
+        num_pchunks = num_chunks * len(self.parameters)
+        pparams = []
+        param_set_ids = []
+        self._set_pparams_paramsetids_presultlist(num_chunks, pparams, param_set_ids)
+        seed_list = self._get_seed_list(len(self.parameters), number_of_trajectories, chunk_size)
+
+        if self.qsub is False:
+            return self._ipython_generate_and_store_realisations(num_pchunks, pparams, param_set_ids, seed_list,
+                                                                 pchunks, divid, progress_bar=progress_bar)
+        else:
+            return self._qsub_generate_and_store_realizations(pparams, param_set_ids, seed_list, pchunks, divid,
+                                                              progress_bar=progress_bar)
+
+    def _update_client(self, client=None):
+        if client is None:
+            self.c = IPython.parallel.Client()
+        else:
+            self.c = client
+        self.c[:].use_dill()
+        if self.num_engines is None:
+            self.lv = self.c.load_balanced_view()
+            self.num_engines = len(self.c.ids)
+        else:
+            max_num_engines = len(self.c.ids)
+            if self.num_engines > max_num_engines:
+                self.num_engines = max_num_engines
+                self.lv = self.c.load_balanced_view()
+            else:
+                engines = self.c.ids[:self.num_engines]
+                self.lv = self.c.load_balanced_view(engines)
+
+        # Set the number of times a failed task is retried. This makes it possible to recover
+        # from engine failure.
+        self.lv.retries = 3
+
+    def _determine_chunk_size(self, number_of_trajectories):
+        """ Determine a optimal chunk size. """
+        return int(max(1, round(number_of_trajectories / float(self.num_engines))))
+
+    def _clear_cache(self):
+        """ Remove all cached result objects on the engines. """
+        pass
+        # TODO
+
+    def delete_realizations(self):
+        """ Delete realizations from the storage. """
+        # TODO local storage deletion
+
+        if self.storage_mode is None:
+            return
+        elif self.storage_mode == "Shared":
+            ss = SharedStorage()
+        elif self.storage_mode == "Persistent":
+            ss = PersistentStorage()
+
+        for param_set_id in self.result_list:
+            for filename in self.result_list[param_set_id]:
+                try:
+                    ss.delete(filename)
+                except OSError as e:
+                    pass
+
+    def __del__(self):
+        """ Deconstructor. """
+        try:
+            self.delete_realizations()
+        except Exception as e:
+            pass
+
+            # --------------------------
+
+    # MAIN FUNCTION
+    # --------------------------
+    def run(self, mapper, aggregator=None, reducer=None, number_of_trajectories=None, chunk_size=None,
+            verbose=True, progress_bar=False, store_realizations=True, cache_results=False, store_realizations_dir=None):
+        """ Main entry point """
+
+        self.log.verbose = verbose
+
+        if reducer is None:
+            reducer = builtin_reducer_default
+
+        if chunk_size is None:
+            chunk_size = self._determine_chunk_size(self.number_of_trajectories)
+
+        # Do we have enough trajectories yet?
+        if number_of_trajectories is None and self.number_of_trajectories == 0:
+            raise MolnsUtilException("number_of_trajectories is zero")
+
+        divid = None
+        if progress_bar:
+            divid = display_progressbar()
+
+        if store_realizations:
+            generated_realizations = None
+            # Run simulations
+            if self.number_of_trajectories < number_of_trajectories:
+                generated_realizations = self.add_realizations(number_of_trajectories - self.number_of_trajectories,
+                                                               chunk_size=chunk_size)
+
+            if self.qsub is False:
+                mapped_results = self._ipython_map_aggregate_stored_realizations(mapper=mapper, divid=divid,
+                                                                                 aggregator=aggregator,
+                                                                                 cache_results=cache_results,
+                                                                                 chunk_size=chunk_size)
+            else:
+                realizations_storage_directory = generated_realizations['realizations_directory']
+                if store_realizations_dir is not None:
+                    if not os.access(store_realizations_dir, os.W_OK):
+                        raise MolnsUtilException("Cannot access provided storage directory: {0}"
+                                                 .format(store_realizations_dir))
+                    import shutil
+                    for f in os.listdir(realizations_storage_directory):
+                        f_abs = os.path.join(realizations_storage_directory, f)
+                        shutil.copy(f_abs, store_realizations_dir)
+                        os.remove(f_abs)
+                    os.rmdir(realizations_storage_directory)
+                    realizations_storage_directory = store_realizations_dir
+
+                mapped_results = self._qsub_map_aggregate_stored_realizations(mapper=mapper, aggregator=aggregator,
+                                                                              chunk_size=chunk_size,
+                                                                              realizations_storage_directory=
+                                                                              realizations_storage_directory)
+        else:
+            if not self.qsub:
+                mapped_results = self._ipython_run_ensemble_map_aggregate(mapper=mapper, aggregator=aggregator,
+                                                                          chunk_size=chunk_size,
+                                                                          number_of_trajectories=number_of_trajectories,
+                                                                          divid=divid)
+
+            else:
+                mapped_results = self._qsub_run_ensemble_map_aggregate(mapper=mapper, divid=divid,
+                                                                       number_of_trajectories=number_of_trajectories,
+                                                                       chunk_size=chunk_size, aggregator=aggregator)
+
+        self.log.write_log("Running reducer on mapped and aggregated results (size={0})".format(len(mapped_results)))
+
+        # Run reducer
+        return self.run_reducer(reducer, mapped_results)
+
+        # -------- Convenience functions with builtin mappers/reducers  ------------------
+
+    def mean_variance(self, mapper=None, number_of_trajectories=None, chunk_size=None, verbose=True,
+                      store_realizations=True, cache_results=False):
+        """ Compute the mean and variance (second order central moment) of the function g(X) based on
+        number_of_trajectories realizations in the ensemble. """
+        return self.run(mapper=mapper, aggregator=builtin_aggregator_sum_and_sum2,
+                        reducer=builtin_reducer_mean_variance, number_of_trajectories=number_of_trajectories,
+                        chunk_size=chunk_size, verbose=verbose, store_realizations=store_realizations,
+                        cache_results=cache_results)
+
+    def mean(self, mapper=None, number_of_trajectories=None, chunk_size=None, verbose=True, store_realizations=True,
+             cache_results=False):
+        """ Compute the mean of the function g(X) based on number_of_trajectories realizations
+            in the ensemble. It has to make sense to say g(result1)+g(result2). """
+        return self.run(mapper=mapper, aggregator=builtin_aggregator_add, reducer=builtin_reducer_mean,
+                        number_of_trajectories=number_of_trajectories, chunk_size=chunk_size, verbose=verbose,
+                        store_realizations=store_realizations, cache_results=cache_results)
+
+    def moment(self, g=None, order=1, number_of_trajectories=None):
+        """ Compute the moment of order 'order' of g(X), using number_of_trajectories
+            realizations in the ensemble. """
+        raise MolnsUtilException('TODO')
+
+    def histogram_density(self, g=None, number_of_trajectories=None):
+        """ Estimate the probability density function of g(X) based on number_of_trajectories realizations
+            in the ensemble. """
+        raise MolnsUtilException('TODO')
+
+        # --------------------------
+
+
+class ParameterSweep(DistributedEnsemble):
+    """ Making parameter sweeps on distributed compute systems easier. """
+
+    def __init__(self, model_class, parameters, qsub=False, client=None, num_engines=None, storage_mode=None):
+        """ Constructor.
+        Args:
+          model_class: a class object of the model for simulation, must be a sub-class of URDMEModel
+          parameters:  either a dict or a list.
+            If it is a dict, the keys are the arguments to the class constructions and the
+              values are a list of values that argument should take.
+              e.g.: {'arg1':[1,2,3],'arg2':[1,2,3]}  will produce 9 parameter points.
+            If it is a list, where each element of the list is a dict
+            """
+
+        if qsub is True:
+            DistributedEnsemble.__init__(self, model_class, parameters, qsub=True, storage_mode=storage_mode)
+            if client is not None:
+                self.log.write_log("unexpected parameter \"client\"")
+            if num_engines is not None:
+                self.log.write_log("unexpected parameter \"num_engines\"")
+
+        else:
+            DistributedEnsemble.__init__(self, model_class, parameters, client, num_engines, storage_mode=storage_mode)
+
+        self.my_class_name = 'ParameterSweep'
+        self.parameters = []
+
+        # process the parameters
+        if type(parameters) is dict:
+            vals = []
+            keys = []
+            for key, value in parameters.items():
+                keys.append(key)
+                vals.append(value)
+            pspace = itertools.product(*vals)
+
+            paramsets = []
+
+            for p in pspace:
+                pset = {}
+                for i, val in enumerate(p):
+                    pset[keys[i]] = val
+                paramsets.append(pset)
+
+            self.parameters = paramsets
+        elif type(parameters) is list:
+            self.parameters = parameters
+        else:
+            raise MolnsUtilException("parameters must be a dict.")
+
+            # I commented this out because this initialization is also happening in the parent class.
+            # if qsub is False:
+            #     # Set the Ipython.parallel client
+            #     self.num_engines = num_engines
+            #     self._update_client()
+
+    def _determine_chunk_size(self, number_of_trajectories):
+        """ Determine a optimal chunk size. """
+        if self.qsub:
+            return 1
+        num_params = len(self.parameters)
+        if num_params >= self.num_engines:
+            return number_of_trajectories
+        return int(max(1, math.ceil(number_of_trajectories * num_params / float(self.num_engines))))
+
+    def run_reducer(self, reducer, mapped_results):
+        """ Inside the run() function, apply the reducer to all of the mapped-aggregated result values. """
+        ret = ParameterSweepResultList()
+        for param_set_id, param in enumerate(self.parameters):
+            ret.append(ParameterSweepResult(reducer(mapped_results[param_set_id], parameters=param),
+                                            parameters=param))
+        return ret
+        # --------------------------
+
+
+class ParameterSweepResult:
+    """TODO"""
+    def __init__(self, result, parameters):
+        self.result = result
+        self.parameters = parameters
+
+    def __str__(self):
+        return "{0} => {1}".format(self.parameters, self.result)
+
+
+class ParameterSweepResultList(list):
+    def __str__(self):
+        l = []
+        for i in self:
+            l.append(str(i))
+        return "[{0}]".format(", ".join(l))
+
+
+if __name__ == '__main__':
+    ga = PersistentStorage()
+    # print ga.list_buckets()
+    ga.put('testtest.pyb', "fdkjshfkjdshfjdhsfkjhsdkjfhdskjf")
+    print ga.get('testtest.pyb')
+    ga.delete('testtest.pyb')
+    ga.list()
+    ga.put('file1', "fdlsfjdkls")
+    ga.put('file2', "fdlsfjdkls")
+    ga.put('file2', "fdlsfjdkls")
+    ga.delete_all()

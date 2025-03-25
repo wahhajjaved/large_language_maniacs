@@ -1,0 +1,664 @@
+from django.contrib import messages
+from django.core.files import File
+from django.core.urlresolvers import resolve, reverse
+from django.db import transaction
+from django.forms.models import ModelMultipleChoiceField, inlineformset_factory
+from django.http import Http404, HttpResponseRedirect
+from django.shortcuts import redirect
+from django.utils.functional import cached_property
+from django.utils.translation import ugettext_lazy as _
+from django.views.generic import ListView
+from django.views.generic.base import TemplateView
+from django.views.generic.detail import SingleObjectMixin
+from django.views.generic.edit import DeleteView
+
+from pretix.base.i18n import I18nFormSet
+from pretix.base.models import (
+    Item, ItemCategory, ItemVariation, Question, Quota,
+)
+from pretix.control.forms.item import (
+    CategoryForm, ItemFormGeneral, ItemVariationForm, QuestionForm, QuotaForm,
+)
+from pretix.control.permissions import (
+    EventPermissionRequiredMixin, event_permission_required,
+)
+
+from . import CreateView, UpdateView
+
+
+class ItemList(ListView):
+    model = Item
+    context_object_name = 'items'
+    # paginate_by = 30
+    # Pagination is disabled as it is very unlikely to be necessary
+    # here and could cause problems with the "reorder-within-category" feature
+    template_name = 'pretixcontrol/items/index.html'
+
+    def get_queryset(self):
+        return Item.objects.filter(
+            event=self.request.event
+        ).prefetch_related("category")
+
+
+def item_move(request, item, up=True):
+    """
+    This is a helper function to avoid duplicating code in item_move_up and
+    item_move_down. It takes an item and a direction and then tries to bring
+    all items for this category in a new order.
+    """
+    try:
+        item = request.event.items.get(
+            id=item
+        )
+    except Item.DoesNotExist:
+        raise Http404(_("The requested product does not exist."))
+    items = list(request.event.items.filter(category=item.category).order_by("position"))
+
+    index = items.index(item)
+    if index != 0 and up:
+        items[index - 1], items[index] = items[index], items[index - 1]
+    elif index != len(items) - 1 and not up:
+        items[index + 1], items[index] = items[index], items[index + 1]
+
+    for i, item in enumerate(items):
+        if item.position != i:
+            item.position = i
+            item.save()
+    messages.success(request, _('The order of items as been updated.'))
+
+
+@event_permission_required("can_change_items")
+def item_move_up(request, organizer, event, item):
+    item_move(request, item, up=True)
+    return redirect('control:event.items',
+                    organizer=request.event.organizer.slug,
+                    event=request.event.slug)
+
+
+@event_permission_required("can_change_items")
+def item_move_down(request, organizer, event, item):
+    item_move(request, item, up=False)
+    return redirect('control:event.items',
+                    organizer=request.event.organizer.slug,
+                    event=request.event.slug)
+
+
+class CategoryDelete(EventPermissionRequiredMixin, DeleteView):
+    model = ItemCategory
+    form_class = CategoryForm
+    template_name = 'pretixcontrol/items/category_delete.html'
+    permission = 'can_change_items'
+    context_object_name = 'category'
+
+    def get_object(self, queryset=None) -> ItemCategory:
+        try:
+            return self.request.event.categories.get(
+                id=self.kwargs['category']
+            )
+        except ItemCategory.DoesNotExist:
+            raise Http404(_("The requested product category does not exist."))
+
+    @transaction.atomic()
+    def delete(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        for item in self.object.items.all():
+            item.category = None
+            item.save()
+        success_url = self.get_success_url()
+        self.object.log_action('pretix.event.category.deleted', user=self.request.user)
+        self.object.delete()
+        messages.success(request, _('The selected category has been deleted.'))
+        return HttpResponseRedirect(success_url)
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items.categories', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
+
+
+class CategoryUpdate(EventPermissionRequiredMixin, UpdateView):
+    model = ItemCategory
+    form_class = CategoryForm
+    template_name = 'pretixcontrol/items/category.html'
+    permission = 'can_change_items'
+    context_object_name = 'category'
+
+    def get_object(self, queryset=None) -> ItemCategory:
+        url = resolve(self.request.path_info)
+        try:
+            return self.request.event.categories.get(
+                id=url.kwargs['category']
+            )
+        except ItemCategory.DoesNotExist:
+            raise Http404(_("The requested product category does not exist."))
+
+    @transaction.atomic()
+    def form_valid(self, form):
+        messages.success(self.request, _('Your changes have been saved.'))
+        if form.has_changed():
+            self.object.log_action(
+                'pretix.event.category.changed', user=self.request.user, data={
+                    k: form.cleaned_data.get(k) for k in form.changed_data
+                }
+            )
+        return super().form_valid(form)
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items.categories', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
+
+
+class CategoryCreate(EventPermissionRequiredMixin, CreateView):
+    model = ItemCategory
+    form_class = CategoryForm
+    template_name = 'pretixcontrol/items/category.html'
+    permission = 'can_change_items'
+    context_object_name = 'category'
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items.categories', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
+
+    @transaction.atomic()
+    def form_valid(self, form):
+        form.instance.event = self.request.event
+        messages.success(self.request, _('The new category has been created.'))
+        ret = super().form_valid(form)
+        form.instance.log_action('pretix.event.category.added', data=dict(form.cleaned_data), user=self.request.user)
+        return ret
+
+
+class CategoryList(ListView):
+    model = ItemCategory
+    context_object_name = 'categories'
+    paginate_by = 30
+    template_name = 'pretixcontrol/items/categories.html'
+
+    def get_queryset(self):
+        return self.request.event.categories.all()
+
+
+def category_move(request, category, up=True):
+    """
+    This is a helper function to avoid duplicating code in category_move_up and
+    category_move_down. It takes a category and a direction and then tries to bring
+    all categories for this event in a new order.
+    """
+    try:
+        category = request.event.categories.get(
+            id=category
+        )
+    except ItemCategory.DoesNotExist:
+        raise Http404(_("The requested product category does not exist."))
+    categories = list(request.event.categories.order_by("position"))
+
+    index = categories.index(category)
+    if index != 0 and up:
+        categories[index - 1], categories[index] = categories[index], categories[index - 1]
+    elif index != len(categories) - 1 and not up:
+        categories[index + 1], categories[index] = categories[index], categories[index + 1]
+
+    for i, cat in enumerate(categories):
+        if cat.position != i:
+            cat.position = i
+            cat.save()
+    messages.success(request, _('The order of categories as been updated.'))
+
+
+@event_permission_required("can_change_items")
+def category_move_up(request, organizer, event, category):
+    category_move(request, category, up=True)
+    return redirect('control:event.items.categories',
+                    organizer=request.event.organizer.slug,
+                    event=request.event.slug)
+
+
+@event_permission_required("can_change_items")
+def category_move_down(request, organizer, event, category):
+    category_move(request, category, up=False)
+    return redirect('control:event.items.categories',
+                    organizer=request.event.organizer.slug,
+                    event=request.event.slug)
+
+
+class QuestionList(ListView):
+    model = Question
+    context_object_name = 'questions'
+    paginate_by = 30
+    template_name = 'pretixcontrol/items/questions.html'
+
+    def get_queryset(self):
+        return self.request.event.questions.all()
+
+
+class QuestionDelete(EventPermissionRequiredMixin, DeleteView):
+    model = Question
+    template_name = 'pretixcontrol/items/question_delete.html'
+    permission = 'can_change_items'
+    context_object_name = 'question'
+
+    def get_object(self, queryset=None) -> Question:
+        try:
+            return self.request.event.questions.get(
+                id=self.kwargs['question']
+            )
+        except Question.DoesNotExist:
+            raise Http404(_("The requested question does not exist."))
+
+    def get_context_data(self, *args, **kwargs) -> dict:
+        context = super().get_context_data(*args, **kwargs)
+        context['dependent'] = list(self.get_object().items.all())
+        return context
+
+    @transaction.atomic()
+    def delete(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        success_url = self.get_success_url()
+        self.object.log_action(action='pretix.event.question.deleted', user=request.user)
+        self.object.delete()
+        messages.success(request, _('The selected question has been deleted.'))
+        return HttpResponseRedirect(success_url)
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items.questions', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
+
+
+class QuestionUpdate(EventPermissionRequiredMixin, UpdateView):
+    model = Question
+    form_class = QuestionForm
+    template_name = 'pretixcontrol/items/question.html'
+    permission = 'can_change_items'
+    context_object_name = 'question'
+
+    def get_object(self, queryset=None) -> Question:
+        try:
+            return self.request.event.questions.get(
+                id=self.kwargs['question']
+            )
+        except Question.DoesNotExist:
+            raise Http404(_("The requested question does not exist."))
+
+    @transaction.atomic()
+    def form_valid(self, form):
+        if form.has_changed():
+            self.object.log_action(
+                'pretix.event.question.changed', user=self.request.user, data={
+                    k: form.cleaned_data.get(k) for k in form.changed_data
+                }
+            )
+        messages.success(self.request, _('Your changes have been saved.'))
+        return super().form_valid(form)
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items.questions', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
+
+
+class QuestionCreate(EventPermissionRequiredMixin, CreateView):
+    model = Question
+    form_class = QuestionForm
+    template_name = 'pretixcontrol/items/question.html'
+    permission = 'can_change_items'
+    context_object_name = 'question'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['instance'] = Question(event=self.request.event)
+        return kwargs
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items.questions', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
+
+    @transaction.atomic()
+    def form_valid(self, form):
+        messages.success(self.request, _('The new question has been created.'))
+        ret = super().form_valid(form)
+        form.instance.log_action('pretix.event.question.added', user=self.request.user, data=dict(form.cleaned_data))
+        return ret
+
+
+class QuotaList(ListView):
+    model = Quota
+    context_object_name = 'quotas'
+    paginate_by = 30
+    template_name = 'pretixcontrol/items/quotas.html'
+
+    def get_queryset(self):
+        return Quota.objects.filter(
+            event=self.request.event
+        ).prefetch_related("items")
+
+
+class QuotaEditorMixin:
+    @cached_property
+    def items(self) -> "List[Item]":
+        return list(self.request.event.items.all().prefetch_related("variations"))
+
+    def get_form(self, form_class=QuotaForm):
+        if not hasattr(self, '_form'):
+            kwargs = self.get_form_kwargs()
+            kwargs['items'] = self.items
+            self._form = form_class(**kwargs)
+        return self._form
+
+    def get_context_data(self, *args, **kwargs) -> dict:
+        context = super().get_context_data(*args, **kwargs)
+        context['items'] = self.items
+        for item in context['items']:
+            item.field = self.get_form(QuotaForm)['item_%s' % item.id]
+        return context
+
+    @transaction.atomic()
+    def form_valid(self, form):
+        res = super().form_valid(form)
+        items = self.object.items.all()
+        variations = self.object.variations.all()
+        selected_variations = []
+        self.object = form.instance
+        for item in self.items:
+            field = form.fields['item_%s' % item.id]
+            data = form.cleaned_data['item_%s' % item.id]
+            if isinstance(field, ModelMultipleChoiceField):
+                for v in data:
+                    selected_variations.append(v)
+            if data and item not in items:
+                self.object.items.add(item)
+            elif not data and item in items:
+                self.object.items.remove(item)
+
+        self.object.variations.add(*[v for v in selected_variations if v not in variations])
+        self.object.variations.remove(*[v for v in variations if v not in selected_variations])
+        return res
+
+
+class QuotaCreate(EventPermissionRequiredMixin, QuotaEditorMixin, CreateView):
+    model = Quota
+    form_class = QuotaForm
+    template_name = 'pretixcontrol/items/quota.html'
+    permission = 'can_change_items'
+    context_object_name = 'quota'
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items.quotas', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
+
+    @transaction.atomic()
+    def form_valid(self, form):
+        form.instance.event = self.request.event
+        messages.success(self.request, _('The new quota has been created.'))
+        ret = super().form_valid(form)
+        form.instance.log_action('pretix.event.quota.added', user=self.request.user, data=dict(form.cleaned_data))
+        return ret
+
+
+class QuotaUpdate(EventPermissionRequiredMixin, QuotaEditorMixin, UpdateView):
+    model = Quota
+    form_class = QuotaForm
+    template_name = 'pretixcontrol/items/quota.html'
+    permission = 'can_change_items'
+    context_object_name = 'quota'
+
+    def get_object(self, queryset=None) -> Quota:
+        try:
+            return self.request.event.quotas.get(
+                id=self.kwargs['quota']
+            )
+        except Quota.DoesNotExist:
+            raise Http404(_("The requested quota does not exist."))
+
+    @transaction.atomic()
+    def form_valid(self, form):
+        messages.success(self.request, _('Your changes have been saved.'))
+        if form.has_changed():
+            self.object.log_action(
+                'pretix.event.quota.changed', user=self.request.user, data={
+                    k: form.cleaned_data.get(k) for k in form.changed_data
+                }
+            )
+        return super().form_valid(form)
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items.quotas', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
+
+
+class QuotaDelete(EventPermissionRequiredMixin, DeleteView):
+    model = Quota
+    template_name = 'pretixcontrol/items/quota_delete.html'
+    permission = 'can_change_items'
+    context_object_name = 'quota'
+
+    def get_object(self, queryset=None) -> Quota:
+        try:
+            return self.request.event.quotas.get(
+                id=self.kwargs['quota']
+            )
+        except Quota.DoesNotExist:
+            raise Http404(_("The requested quota does not exist."))
+
+    def get_context_data(self, *args, **kwargs) -> dict:
+        context = super().get_context_data(*args, **kwargs)
+        context['dependent'] = list(self.get_object().items.all())
+        return context
+
+    @transaction.atomic()
+    def delete(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        success_url = self.get_success_url()
+        self.object.log_action(action='pretix.event.quota.deleted', user=request.user)
+        self.object.delete()
+        messages.success(self.request, _('The selected quota has been deleted.'))
+        return HttpResponseRedirect(success_url)
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items.quotas', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
+
+
+class ItemDetailMixin(SingleObjectMixin):
+    model = Item
+    context_object_name = 'item'
+
+    def get_object(self, queryset=None) -> Item:
+        try:
+            if not hasattr(self, 'object') or not self.object:
+                self.item = self.request.event.items.get(
+                    id=self.kwargs['item']
+                )
+                self.object = self.item
+            return self.object
+        except Item.DoesNotExist:
+            raise Http404(_("The requested item does not exist."))
+
+
+class ItemCreate(EventPermissionRequiredMixin, CreateView):
+    form_class = ItemFormGeneral
+    template_name = 'pretixcontrol/item/index.html'
+    permission = 'can_change_items'
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.item', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+            'item': self.object.id,
+        })
+
+    @transaction.atomic()
+    def form_valid(self, form):
+        messages.success(self.request, _('Your changes have been saved.'))
+        ret = super().form_valid(form)
+        form.instance.log_action('pretix.event.item.added', user=self.request.user, data=dict(form.cleaned_data))
+        return ret
+
+    def get_form_kwargs(self):
+        """
+        Returns the keyword arguments for instantiating the form.
+        """
+        newinst = Item(event=self.request.event)
+        kwargs = super().get_form_kwargs()
+        kwargs.update({'instance': newinst})
+        return kwargs
+
+
+class ItemUpdateGeneral(ItemDetailMixin, EventPermissionRequiredMixin, UpdateView):
+    form_class = ItemFormGeneral
+    template_name = 'pretixcontrol/item/index.html'
+    permission = 'can_change_items'
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.item', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+            'item': self.get_object().id,
+        })
+
+    @transaction.atomic()
+    def form_valid(self, form):
+        messages.success(self.request, _('Your changes have been saved.'))
+        if form.has_changed():
+            self.object.log_action(
+                'pretix.event.item.changed', user=self.request.user, data={
+                    k: (form.cleaned_data.get(k).name
+                        if isinstance(form.cleaned_data.get(k), File)
+                        else form.cleaned_data.get(k))
+                    for k in form.changed_data
+                }
+            )
+        return super().form_valid(form)
+
+
+class ItemVariations(ItemDetailMixin, EventPermissionRequiredMixin, TemplateView):
+    permission = 'can_change_items'
+    template_name = 'pretixcontrol/item/variations.html'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.item = None
+
+    @cached_property
+    def formset(self):
+        formsetclass = inlineformset_factory(
+            Item, ItemVariation,
+            form=ItemVariationForm, formset=I18nFormSet,
+            can_order=True, can_delete=True, extra=0
+        )
+        return formsetclass(self.request.POST if self.request.method == "POST" else None,
+                            queryset=ItemVariation.objects.filter(item=self.get_object()),
+                            event=self.request.event)
+
+    def post(self, request, *args, **kwargs):
+        with transaction.atomic():
+            if self.formset.is_valid():
+                for form in self.formset.deleted_forms:
+                    if not form.instance.pk:
+                        continue
+                    self.get_object().log_action(
+                        'pretix.event.item.variation.deleted', user=self.request.user, data={
+                            'id': form.instance.pk
+                        }
+                    )
+                    form.instance.delete()
+                    form.instance.pk = None
+
+                forms = self.formset.ordered_forms + [
+                    ef for ef in self.formset.extra_forms
+                    if ef not in self.formset.ordered_forms and ef not in self.formset.deleted_forms
+                ]
+                for i, form in enumerate(forms):
+                    form.instance.position = i
+                    form.instance.item = self.get_object()
+                    created = not form.instance.pk
+                    form.save()
+                    if form.has_changed():
+                        change_data = {k: form.cleaned_data.get(k) for k in form.changed_data}
+                        change_data['id'] = form.instance.pk
+                        self.get_object().log_action(
+                            'pretix.event.item.variation.changed' if not created else
+                            'pretix.event.item.variation.added',
+                            user=self.request.user, data=change_data
+                        )
+
+                messages.success(self.request, _('Your changes have been saved.'))
+                return redirect(self.get_success_url())
+        return self.get(request, *args, **kwargs)
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.item.variations', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+            'item': self.get_object().id,
+        })
+
+    def get_context_data(self, **kwargs) -> dict:
+        self.object = self.get_object()
+        context = super().get_context_data(**kwargs)
+        context['formset'] = self.formset
+        return context
+
+
+class ItemDelete(EventPermissionRequiredMixin, DeleteView):
+    model = Item
+    template_name = 'pretixcontrol/item/delete.html'
+    permission = 'can_change_items'
+    context_object_name = 'item'
+
+    def get_context_data(self, *args, **kwargs) -> dict:
+        context = super().get_context_data(*args, **kwargs)
+        context['possible'] = self.is_allowed()
+        return context
+
+    def is_allowed(self) -> bool:
+        return not self.get_object().positions.exists()
+
+    def get_object(self, queryset=None) -> Item:
+        if not hasattr(self, 'object') or not self.object:
+            try:
+                self.object = self.request.event.items.get(
+                    id=self.kwargs['item']
+                )
+            except Item.DoesNotExist:
+                raise Http404(_("The requested product does not exist."))
+        return self.object
+
+    @transaction.atomic
+    def delete(self, request, *args, **kwargs):
+        success_url = self.get_success_url()
+        if self.is_allowed():
+            self.get_object().log_action('pretix.event.item.deleted', user=self.request.user)
+            self.get_object().delete()
+            messages.success(request, _('The selected product has been deleted.'))
+            return HttpResponseRedirect(success_url)
+        else:
+            o = self.get_object()
+            o.active = False
+            o.save()
+            o.log_action('pretix.event.item.changed', user=self.request.user, data={
+                'active': False
+            })
+            messages.success(request, _('The selected product has been deactivated.'))
+            return HttpResponseRedirect(success_url)
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.items', kwargs={
+            'organizer': self.request.event.organizer.slug,
+            'event': self.request.event.slug,
+        })
