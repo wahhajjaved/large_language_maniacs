@@ -1,0 +1,470 @@
+import os
+from configparser import ConfigParser
+from background_task import background
+from datetime import datetime, timedelta
+from .models import Preset, ServerSetting
+from django.conf import settings
+from subprocess import Popen, PIPE
+from xml.etree.ElementTree import Element, SubElement, tostring, parse
+from xml.dom import minidom
+import re
+
+
+@background(schedule=timedelta(seconds=0))
+def write_config(preset_id):
+    preset = Preset.objects.get(id=preset_id)
+    acserver_config_dir = os.path.join(settings.ACSERVER_CONFIG_DIR, str(preset_id))
+    stracker_config_dir = os.path.join(settings.STRACKER_CONFIG_DIR, str(preset_id))
+    # unfortunately the entry list's fixed_setup parameter doesn't abide by a abolute paths and assumes setups are
+    # found within a "setups" subdir of the acServer workdir :(
+    setups_dir = os.path.join(settings.ACSERVER_BIN_DIR, 'setups')
+    ch = ConfigHandler(acserver_config_dir, setups_dir, stracker_config_dir)
+    ch.write_acserver_config(preset)
+    ch.write_entries_config(preset)
+    ch.write_welcome_message(preset)
+    ch.write_stracker_config(preset)
+    ch.write_minorating_config(preset)
+
+
+@background(schedule=timedelta(seconds=1))
+def kick_services(preset_id):
+    p = Popen(['/bin/sudo', '/usr/bin/systemctl', 'restart', 'acserver@' + str(preset_id)], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p.communicate()
+    acserver_return_code = p.returncode
+
+    if acserver_return_code != 0:
+        raise Exception('failed to restart assetto corsa server process')
+
+    p = Popen(['/bin/sudo', '/usr/bin/systemctl', 'restart', 'stracker@' + str(preset_id)], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p.communicate()
+    stracker_return_code = p.returncode
+    if stracker_return_code != 0:
+        raise Exception('failed to restart stracker server process')
+
+    p = Popen(['/bin/sudo', '/usr/bin/systemctl', 'restart', 'minorating@' + str(preset_id)], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p.communicate()
+    minorating_return_code = p.returncode
+    if minorating_return_code != 0:
+        raise Exception('failed to restart minorating server process')
+
+
+@background(schedule=timedelta(seconds=1))
+def stop_services(preset_id):
+    p = Popen(['/bin/sudo', '/usr/bin/systemctl', 'stop', 'acserver@' + str(preset_id)], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p.communicate()
+    acserver_return_code = p.returncode
+
+    if acserver_return_code != 0:
+        raise Exception('failed to stop assetto corsa server process')
+
+    p = Popen(['/bin/sudo', '/usr/bin/systemctl', 'stop', 'stracker@' + str(preset_id)], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p.communicate()
+    stracker_return_code = p.returncode
+    if stracker_return_code != 0:
+        raise Exception('failed to stop stracker server process')
+
+    p = Popen(['/bin/sudo', '/usr/bin/systemctl', 'stop', 'minorating@' + str(preset_id)], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p.communicate()
+    minorating_return_code = p.returncode
+    if minorating_return_code != 0:
+        raise Exception('failed to stop minorating server process')
+
+
+@background(schedule=timedelta(seconds=0))
+def get_server_status():
+    p = Popen(['/bin/sudo', '/usr/bin/systemctl', 'list-units'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    output, err = p.communicate()
+    rc = p.returncode
+    if rc == 0:
+        output_lines = output.split('\n')
+        for preset in Preset.objects.all():
+            preset_changed = False
+            acserver_regex = re.compile('\s*acserver@' + str(preset.id) + '\.service\s+loaded active running')
+            stracker_regex = re.compile('\s*stracker@' + str(preset.id) + '\.service\s+loaded active running')
+            minorating_regex = re.compile('\s*minorating@' + str(preset.id) + '\.service\s+loaded active running')
+
+            acserver_run_status = False
+            stracker_run_status = False
+            minorating_run_status = False
+
+            for line in output_lines:
+                if re.match(acserver_regex, line):
+                    acserver_run_status = True
+                if re.match(stracker_regex, line):
+                    stracker_run_status = True
+                if re.match(minorating_regex, line):
+                    minorating_run_status = True
+
+            if preset.acserver_run_status != acserver_run_status:
+                preset.acserver_run_status = acserver_run_status
+                preset_changed = True
+
+            if preset.stracker_run_status != stracker_run_status:
+                preset.stracker_run_status = stracker_run_status
+                preset_changed = True
+
+            if preset.minorating_run_status != minorating_run_status:
+                preset.minorating_run_status = minorating_run_status
+                preset_changed = True
+
+            if preset_changed:
+                preset.save()
+
+
+@background(schedule=timedelta(seconds=0))
+def perform_upgrade():
+    '''
+    Wipes-out the cloud-init directory; this is a quick & oh-so-dirty method for performing updates ;-)
+    '''
+    target = None
+    cloud_init_dir = '/var/lib/cloud/instance'
+    if os.path.islink(cloud_init_dir):
+        target = os.path.join(os.path.realpath(cloud_init_dir), '*')
+
+    if not target:
+        raise Exception('Could not resolve cloud-init real directory')
+
+    p = Popen('/bin/sudo /bin/rm -rf %s' % target, shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p.communicate()
+    wipe_status_code = p.returncode
+
+    if wipe_status_code != 0:
+        raise Exception('Failed to wipe cloud-init directory: ' + target)
+
+    '''
+    p = Popen(['/bin/sudo', '/sbin/shutdown', '-r', '+1'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p.communicate()
+    reboot_status_code = p.returncode
+
+    if reboot_status_code != 0:
+        raise Exception('Failed to reboot')
+    '''
+
+
+def time_to_sun_angle(time):
+    return str((time.hour - 13) * 16)
+
+
+def prettify_xml(elem):
+    """Return a pretty-printed XML string for the Element.
+    """
+    rough_string = tostring(elem, 'utf-8')
+    reparsed = minidom.parseString(rough_string)
+    return reparsed.toprettyxml(indent="  ")
+
+
+class ConfigHandler:
+    def __init__(self, acserver_config_dir, setups_dir, stracker_config_dir):
+        self.acserver_config_dir = acserver_config_dir
+        self.setups_dir = setups_dir
+        self.stracker_config_dir = stracker_config_dir
+
+        if not os.path.isdir(self.acserver_config_dir):
+            os.makedirs(self.acserver_config_dir)
+
+        if not os.path.isdir(self.stracker_config_dir):
+            os.makedirs(self.stracker_config_dir)
+
+    def write_acserver_config(self, preset):
+        config = ConfigParser()
+        config.optionxform = str
+        cfg_file = open(os.path.join(self.acserver_config_dir, 'server_cfg.ini'), 'w')
+        config.add_section('SERVER')
+
+        # build a distinct list of car names
+        car_list = []
+        for driver in preset.entry_set.all():
+            if driver.car.dirname not in car_list:
+                car_list.append(driver.car.dirname)
+
+        # set max_clients value to the track's pitbox value if null
+        if not preset.max_clients:
+            preset.max_clients = preset.track.pitboxes
+
+        config.set('SERVER', 'NAME', preset.server_setting.name)
+        config.set('SERVER', 'CARS', ';'.join(car_list))
+        config.set('SERVER', 'CONFIG_TRACK', '' if not preset.track.subversion else preset.track.subversion)
+        config.set('SERVER', 'TRACK', preset.track.dirname)
+        config.set('SERVER', 'SUN_ANGLE', time_to_sun_angle(preset.time_of_day))
+        config.set('SERVER', 'PASSWORD', str(preset.session_password))
+        config.set('SERVER', 'ADMIN_PASSWORD', str(preset.server_setting.admin_password))
+        config.set('SERVER', 'UDP_PORT', str(preset.server_setting.udp_port))
+        config.set('SERVER', 'TCP_PORT', str(preset.server_setting.tcp_port))
+        config.set('SERVER', 'HTTP_PORT', str(preset.server_setting.http_port))
+        config.set('SERVER', 'PICKUP_MODE_ENABLED', str(int(preset.pickup_mode_enabled)))
+        config.set('SERVER', 'LOOP_MODE', str(int(preset.loop_mode)))
+        config.set('SERVER', 'SLEEP_TIME', '1')
+        config.set('SERVER', 'CLIENT_SEND_INTERVAL', str(preset.server_setting.client_send_interval))
+        config.set('SERVER', 'SEND_BUFFER_SIZE', str(preset.server_setting.send_buffer_size))
+        config.set('SERVER', 'RECV_BUFFER_SIZE', str(preset.server_setting.recv_buffer_size))
+        config.set('SERVER', 'RACE_OVER_TIME', str(preset.race_over_time))
+        config.set('SERVER', 'KICK_QUORUM', str(preset.kick_quorum))
+        config.set('SERVER', 'VOTING_QUORUM', str(preset.voting_quorum))
+        config.set('SERVER', 'VOTE_DURATION', str(preset.vote_duration))
+        config.set('SERVER', 'BLACKLIST_MODE', str(preset.blacklist_mode))
+        config.set('SERVER', 'FUEL_RATE', str(preset.fuel_rate))
+        config.set('SERVER', 'DAMAGE_MULTIPLIER', str(preset.damage_multiplier))
+        config.set('SERVER', 'TYRE_WEAR_RATE', str(preset.tyre_wear_rate))
+        config.set('SERVER', 'ALLOWED_TYRES_OUT', str(preset.allowed_tyres_out))
+        config.set('SERVER', 'ABS_ALLOWED', str(preset.abs_allowed))
+        config.set('SERVER', 'TC_ALLOWED', str(preset.tc_allowed))
+        config.set('SERVER', 'STABILITY_ALLOWED', str(int(preset.stability_allowed)))
+        config.set('SERVER', 'AUTOCLUTCH_ALLOWED', str(int(preset.autoclutch_allowed)))
+        config.set('SERVER', 'TYRE_BLANKETS_ALLOWED', str(int(preset.tyre_blankets_allowed)))
+        config.set('SERVER', 'FORCE_VIRTUAL_MIRROR', str(int(preset.force_virtual_mirror)))
+        config.set('SERVER', 'REGISTER_TO_LOBBY', '1')
+        config.set('SERVER', 'MAX_CLIENTS', str(preset.max_clients))
+        config.set('SERVER', 'UDP_PLUGIN_LOCAL_PORT', '11000')
+        config.set('SERVER', 'UDP_PLUGIN_ADDRESS', '127.0.0.1:12000')
+        config.set('SERVER', 'AUTH_PLUGIN_ADDRESS', '')
+        config.set('SERVER', 'LEGAL_TYRES', 'V;E;HR;ST')
+        config.set('SERVER', 'START_RULE', str(preset.start_rule))
+        config.set('SERVER', 'QUALIFY_MAX_WAIT_PERC', str(preset.qualify_max_wait_perc))
+
+        if preset.server_setting.welcome_message:
+            config.set('SERVER', 'WELCOME_MESSAGE', str(os.path.join(self.acserver_config_dir, 'welcome_message.txt')))
+
+        if preset.practice_time != 0:
+            config.add_section('PRACTICE')
+            config.set('PRACTICE', 'NAME', 'Free Practice')
+            config.set('PRACTICE', 'TIME', str(preset.practice_time))
+            config.set('PRACTICE', 'IS_OPEN', str(int(preset.practice_is_open)))
+
+        if preset.qualify_time != 0:
+            config.add_section('QUALIFY')
+            config.set('QUALIFY', 'NAME', 'Qualify')
+            config.set('QUALIFY', 'TIME', str(preset.qualify_time))
+            config.set('QUALIFY', 'IS_OPEN', str(int(preset.qualify_is_open)))
+
+        if preset.race_laps != 0:
+            config.add_section('RACE')
+            config.set('RACE', 'NAME', 'Race')
+            config.set('RACE', 'LAPS', str(preset.race_laps))
+            config.set('RACE', 'WAIT_TIME', str(preset.race_wait_time))
+            config.set('RACE', 'IS_OPEN', str(preset.race_is_open))
+
+        if preset.track_dynamism:
+            config.add_section('DYNAMIC_TRACK')
+            config.set('DYNAMIC_TRACK', 'SESSION_START', str(preset.track_dynamism.session_start))
+            config.set('DYNAMIC_TRACK', 'RANDOMNESS', str(preset.track_dynamism.randomness))
+            config.set('DYNAMIC_TRACK', 'SESSION_TRANSFER', str(preset.track_dynamism.session_transfer))
+            config.set('DYNAMIC_TRACK', 'LAP_GAIN', str(preset.track_dynamism.lap_gain))
+
+        weather_count = 0
+        for weather in preset.weathers.all():
+            weather_section = 'WEATHER_' + str(weather_count)
+            config.add_section(weather_section)
+            config.set(weather_section, 'GRAPHICS', weather.graphics)
+            config.set(weather_section, 'BASE_TEMPERATURE_AMBIENT', str(weather.base_temperature_ambient))
+            config.set(weather_section, 'VARIATION_AMBIENT', str(weather.variation_ambient))
+            config.set(weather_section, 'BASE_TEMPERATURE_ROAD', str(weather.base_temperature_road))
+            config.set(weather_section, 'VARIATION_ROAD', str(weather.variation_road))
+            weather_count += 1
+
+        config.write(cfg_file, space_around_delimiters=False)
+        cfg_file.close()
+
+    def write_entries_config(self, preset):
+        config = ConfigParser()
+        config.optionxform = str
+        cfg_file = open(os.path.join(self.acserver_config_dir, 'entry_list.ini'), 'w')
+        car_count = 0
+
+        # maintain a list of fixed_setups that we've written so we don't rewrite the same file
+        written_fixed_setup_list = []
+        car_list = []
+        for entry in preset.entry_set.all():
+            if entry.car not in car_list:
+                car_list.append(entry.car)
+
+            car_section = 'CAR_' + str(car_count)
+            config.add_section(car_section)
+            config.set(car_section, 'MODEL', entry.car.dirname)
+            config.set(car_section, 'SKIN', entry.skin.name)
+            config.set(car_section, 'SPECTATOR_MODE', str(int(entry.spectator_mode)))
+            config.set(car_section, 'DRIVER_NAME', entry.name)
+            config.set(car_section, 'TEAM', entry.team)
+            config.set(car_section, 'GUID', entry.guid)
+            config.set(car_section, 'BALLAST', str(entry.ballast))
+
+            if entry.fixed_setup and entry.car.fixed_setup:
+                setup_filename = entry.car.dirname + '.ini'
+
+                # if we haven't already written the setup file (ie - not in the list) then write it
+                if entry.car not in written_fixed_setup_list:
+                    if not os.path.isdir(self.setups_dir):
+                        os.makedirs(self.setups_dir)
+
+                    fh = open(os.path.join(self.setups_dir, setup_filename), 'w')
+                    fh.write(entry.car.fixed_setup)
+                    fh.close()
+
+                config.set(car_section, 'FIXED_SETUP', setup_filename)
+                written_fixed_setup_list.append(entry.car)
+
+            car_count += 1
+
+        config.write(cfg_file, space_around_delimiters=False)
+        cfg_file.close()
+
+        # tidy up any fixed_setups - if we configure a session with a particular car where none of it's entries
+        # uses a fixed_setup
+        for car in car_list:
+            if car not in written_fixed_setup_list:
+                if os.path.isfile(os.path.join(self.setups_dir, car.dirname + '.ini')):
+                    os.remove(os.path.join(self.setups_dir, car.dirname + '.ini'))
+
+    def write_welcome_message(self, preset):
+        fh = open(os.path.join(self.acserver_config_dir, 'welcome_message.txt'), 'w')
+        fh.write(preset.server_setting.welcome_message)
+        fh.close()
+
+    def write_stracker_config(self, preset):
+        # If we're going to allow multiple instances of acserver, then we need to allow multiple instances of stracker
+        # or at least have the ability to configure which acserver instance config to use.  Most of these parameters are
+        # static for now - over time they can be added to the ServerSettings model.
+        config = ConfigParser()
+        config.optionxform = str
+        cfg_file = open(os.path.join(self.stracker_config_dir, 'stracker.ini'), 'w')
+        config.add_section('STRACKER_CONFIG')
+        config.set('STRACKER_CONFIG', 'ac_server_address', '127.0.0.1')
+        config.set('STRACKER_CONFIG', 'ac_server_cfg_ini', os.path.join(self.acserver_config_dir, 'server_cfg.ini'))
+        config.set('STRACKER_CONFIG', 'append_log_file', 'False')
+        config.set('STRACKER_CONFIG', 'keep_alive_ptracker_conns', 'True')
+        config.set('STRACKER_CONFIG', 'listening_port', '50042')
+        # TODO: put the log_file somewhere sensible
+        config.set('STRACKER_CONFIG', 'log_file', os.path.join(self.stracker_config_dir, 'stracker.log'))
+        config.set('STRACKER_CONFIG', 'log_level', 'info')
+        config.set('STRACKER_CONFIG', 'log_timestamps', 'False')
+        config.set('STRACKER_CONFIG', 'lower_priority', 'True')
+        config.set('STRACKER_CONFIG', 'perform_checksum_comparisons', 'False')
+        config.set('STRACKER_CONFIG', 'ptracker_connection_mode', 'any')
+        config.set('STRACKER_CONFIG', 'server_name', 'acserver')
+        config.set('STRACKER_CONFIG', 'tee_to_stdout', 'False')
+
+        config.add_section('SWEAR_FILTER')
+        config.set('SWEAR_FILTER', 'action', 'none')
+        config.set('SWEAR_FILTER', 'ban_duration', '30')
+        config.set('SWEAR_FILTER', 'num_warnings', '3')
+        config.set('SWEAR_FILTER', 'swear_file', 'bad_words.txt')
+        # TODO: the warning message below originally took parameterised "action" and "num_warnings" values; this caused ConfigParser issues so the message was made static.  Ideally this wants to become dynamic somehow.
+        config.set('SWEAR_FILTER', 'warning',
+                   'Please be polite and do not swear in the chat. You will be kicked from the server after receiving 3 more warnings.')
+
+        config.add_section('SESSION_MANAGEMENT')
+        config.set('SESSION_MANAGEMENT', 'race_over_strategy', 'none')
+        config.set('SESSION_MANAGEMENT', 'wait_secs_before_skip', '15')
+
+        config.add_section('MESSAGES')
+        config.set('MESSAGES', 'best_lap_time_broadcast_threshold', '105')
+        config.set('MESSAGES', 'car_to_car_collision_msg', 'True')
+        config.set('MESSAGES', 'message_types_to_send_over_chat', 'best_lap+welcome+race_finished')
+
+        config.add_section('DATABASE')
+        config.set('DATABASE', 'database_file', '/home/acserver/stracker/stracker.db3')
+        config.set('DATABASE', 'database_type', 'sqlite3')
+        config.set('DATABASE', 'perform_backups', 'True')
+        config.set('DATABASE', 'postgres_db', 'stracker')
+        config.set('DATABASE', 'postgres_host', 'localhost')
+        config.set('DATABASE', 'postgres_pwd', 'password')
+        config.set('DATABASE', 'postgres_user', 'myuser')
+
+        config.add_section('DB_COMPRESSION')
+        config.set('DB_COMPRESSION', 'interval', '60')
+        config.set('DB_COMPRESSION', 'mode', 'none')
+        config.set('DB_COMPRESSION', 'needs_empty_server', '1')
+
+        config.add_section('HTTP_CONFIG')
+        config.set('HTTP_CONFIG', 'admin_password', preset.server_setting.admin_password)
+        config.set('HTTP_CONFIG', 'admin_username', 'admin')
+        config.set('HTTP_CONFIG', 'auth_log_file', '')
+        config.set('HTTP_CONFIG', 'banner', '')
+        config.set('HTTP_CONFIG', 'enable_paypal_link', 'True')
+        config.set('HTTP_CONFIG', 'enable_svg_generation', 'True')
+        config.set('HTTP_CONFIG', 'enabled', 'True')
+        config.set('HTTP_CONFIG', 'inverse_navbar', 'False')
+        config.set('HTTP_CONFIG', 'items_per_page', '15')
+        config.set('HTTP_CONFIG', 'lap_times_add_columns', 'valid+aids+laps+date')
+        config.set('HTTP_CONFIG', 'listen_addr', '0.0.0.0')
+        config.set('HTTP_CONFIG', 'listen_port', '50041')
+        config.set('HTTP_CONFIG', 'log_requests', 'False')
+        config.set('HTTP_CONFIG', 'max_streaming_clients', '10')
+        config.set('HTTP_CONFIG', 'temperature_unit', 'degc')
+        config.set('HTTP_CONFIG', 'velocity_unit', 'kmh')
+
+        config.add_section('BLACKLIST')
+        config.set('BLACKLIST', 'blacklist_file', '')
+
+        config.add_section('WELCOME_MSG')
+        config.set('WELCOME_MSG', 'line1', 'Welcome to stracker %(version)s')
+        config.set('WELCOME_MSG', 'line2', '')
+        config.set('WELCOME_MSG', 'line3', '')
+
+        config.add_section('ACPLUGIN')
+        config.set('ACPLUGIN', 'proxyPluginLocalPort', str(preset.server_setting.proxy_plugin_local_port))
+        config.set('ACPLUGIN', 'proxyPluginPort', str(preset.server_setting.proxy_plugin_port))
+        config.set('ACPLUGIN', 'rcvPort', '-1')
+        config.set('ACPLUGIN', 'sendPort', '-1')
+
+        config.add_section('LAP_VALID_CHECKS')
+        config.set('LAP_VALID_CHECKS', 'invalidateOnCarCollisions', 'True')
+        config.set('LAP_VALID_CHECKS', 'invalidateOnEnvCollisions', 'True')
+        config.set('LAP_VALID_CHECKS', 'ptrackerAllowedTyresOut', '-1')
+
+        config.write(cfg_file, space_around_delimiters=True)
+        cfg_file.close()
+
+    def write_minorating_config(self, preset):
+        config_file = os.path.join(settings.MINORATING_CONFIG_DIR, 'MinoRatingPlugin.exe.config')
+
+        # if server_settings doesn't have a record of the trust_token, attempt to fetch it from the config xml as this
+        # gets initialised when minorating is activated for the first time
+        trust_token = None
+        trust_token_from_file = None
+        if not preset.server_setting.minorating_server_trust_token:
+            try:
+                et = parse(config_file)
+                root = et.getroot()
+                for add_entry in root.find('appSettings').findall('add'):
+                    add_entry_dict = add_entry.attrib
+                    if 'key' in add_entry_dict and 'value' in add_entry_dict:
+                        if add_entry_dict['key'] == 'server_trust_token':
+                            trust_token_from_file = add_entry_dict['value']
+            except:
+                pass
+
+            # if we don't have a recorded trust token but found one in the file - commit it's value to the db and use
+            # its value for config writes later in this method
+            if trust_token_from_file:
+                server_setting = Preset.server_setting
+                server_setting.minorating_server_trust_token = trust_token_from_file
+                server_setting.save()
+                trust_token = trust_token_from_file
+        else:
+            trust_token = preset.server_setting.minorating_server_trust_token
+
+        settings_dict = {
+            'load_server_cfg': '1',
+            'ac_server_directory': settings.ACSERVER_BIN_DIR,
+            'plugin_port': str(preset.server_setting.proxy_plugin_port),
+            'ac_server_port': str(preset.server_setting.proxy_plugin_local_port),
+            'ac_cfg_directory': self.acserver_config_dir,
+            'start_new_log_on_new_session': '0',
+            'log_server_requests': '0',
+            'server_trust_token': trust_token,
+        }
+
+        root = Element('configuration')
+        startup = SubElement(root, 'startup')
+        SubElement(startup, 'supportedRuntime', attrib={
+            'version': 'v4.0',
+            'sku': '.NETFramework,Version=v4.5',
+        })
+
+        app_settings = SubElement(root, 'appSettings')
+        for k in settings_dict:
+            SubElement(app_settings, 'add', attrib={'key': k, 'value': settings_dict[k]})
+
+        fh = open(config_file, 'w')
+        fh.write(prettify_xml(root))
+        fh.close()

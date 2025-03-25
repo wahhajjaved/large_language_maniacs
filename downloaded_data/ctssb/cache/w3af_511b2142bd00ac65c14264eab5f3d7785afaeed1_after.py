@@ -1,0 +1,371 @@
+'''
+exploittab.py
+
+Copyright 2007 Andres Riancho
+
+This file is part of w3af, w3af.sourceforge.net .
+
+w3af is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation version 2 of the License.
+
+w3af is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with w3af; if not, write to the Free Software
+Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+'''
+
+import pygtk
+pygtk.require('2.0')
+import gtk, gobject        
+
+import time
+import core.ui.gtkUi.prompt as prompt
+import core.ui.gtkUi.kbtree as kbtree
+import core.ui.gtkUi.helpers as helpers
+import core.ui.gtkUi.entries as entries
+import core.ui.gtkUi.messages as messages
+import core.ui.gtkUi.confpanel as confpanel
+from core.ui.gtkUi.pluginEditor import editPlugin
+
+import core.data.kb.knowledgeBase as kb
+from core.data.kb.vuln import vuln as vulnType
+from core.controllers.w3afException import w3afException
+
+
+class Shells(gtk.TreeView):
+    '''The list of shells produced from vulnerabilities.
+
+    @author: Facundo Batista <facundobatista =at= taniquetil.com.ar>
+    '''
+    def __init__(self):
+        # create the ListStore, with the shell name and id
+        self.liststore = gtk.ListStore(str, str)
+        self.listholder = {}
+
+        # create the TreeView using liststore
+        super(Shells,self).__init__(self.liststore)
+        
+        # create a TreeViewColumn for the text
+        tvcolumn = gtk.TreeViewColumn('Shells')
+        cell = gtk.CellRendererText()
+        tvcolumn.pack_start(cell, True)
+        tvcolumn.add_attribute(cell, 'text', 0)
+        self.append_column(tvcolumn)
+
+        self.connect('row-activated', self.useShell)
+        gobject.timeout_add(500, self._update)
+        self.show()
+
+    def _update(self):
+        '''Updates the list of shells.
+
+        @return: True, to keep gobject.timeout_add calling it.
+        '''
+        shells = kb.kb.getAllShells()
+        for shell in shells:
+            shellid = str(id(shell))
+            if shellid not in self.listholder:
+                self.listholder[shellid] = shell
+                self.liststore.append([str(shell), shellid])
+        return True
+
+    def useShell(self, treeview, path, view_column):
+        '''Raises a prompt dialog to use the shell.'''
+        shellid = self.liststore[path][1]
+        shell = self.listholder[shellid]
+        title = "Shell - " + shell.getRemoteSystem()
+        promptText = shell.getRemoteUser()+'@'+shell.getRemoteSystemName()
+        prompt.PromptDialog( title, promptText, shell.rexec)
+
+
+class ExploitTree(gtk.TreeView):
+    '''A list showing all the plugins of "attack" type.
+
+    @param w3af: The main core class.
+
+    @author: Facundo Batista <facundobatista =at= taniquetil.com.ar>
+    '''
+    def __init__(self, w3af):
+        self.w3af = w3af
+
+        # create the ListStore, with the plugin name
+        self.liststore = gtk.ListStore(str)
+
+        # just build the tree with the plugin names
+        for plugin in sorted(w3af.getPluginList("attack")):
+            self.liststore.append([plugin])
+
+        # we will not ask for the plugin instances until needed, we'll
+        # keep them here:
+        self.plugin_instances = {}
+
+        # create the TreeView using liststore
+        super(ExploitTree,self).__init__(self.liststore)
+        
+        # button-release-event, to handle right click
+        self.connect('button-release-event', self.popup_menu)
+        
+        # create a TreeViewColumn for the text
+        tvcolumn = gtk.TreeViewColumn('Exploits')
+        cell = gtk.CellRendererText()
+        tvcolumn.pack_start(cell, True)
+        tvcolumn.add_attribute(cell, 'text', 0)
+        self.append_column(tvcolumn)
+
+        # drag and drop setup, this is the SOURCE
+        target = [("explot-activ", 0, 1)]
+        self.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, target, gtk.gdk.ACTION_COPY)
+
+        #self.set_enable_tree_lines(True)
+        self.show()
+        
+    def popup_menu( self, tv, event ):
+        '''Shows a menu when you right click on a plugin.
+        
+        @param tv: the treeview.
+        @parameter event: The GTK event 
+        '''
+        if event.button != 3:
+            return
+
+        (path, column) = tv.get_cursor()
+        # Is it over a plugin name ?
+        if path != None and len(path) == 1:
+            # Get the information about the click
+            plugin = self.getPluginInstance(path)
+            pname = self.liststore[path][0]
+            
+            # Ok, now I show the popup menu !
+            # Create the popup menu
+            gm = gtk.Menu()
+            
+            # And the items
+            e = gtk.MenuItem("Edit plugin...")
+            e.connect('activate', editPlugin, pname, 'attack' )
+            gm.append( e )
+            e = gtk.MenuItem("Configure plugin...")
+            e.connect('activate', self._configureExploit, plugin, pname)
+            gm.append( e )
+            gm.show_all()
+            
+            gm.popup( None, None, None, event.button, event.time)
+
+    def _configureExploit(self, widget, plugin, pname):
+        title = "Configure " + pname
+        confpanel.ConfigDialog(title, self.w3af, plugin)
+
+    def getPluginInstance(self, path):
+        '''Caches the plugin instance.
+
+        @param path: where the user is in the plugin list
+        @return The plugin
+        '''
+        try:
+            return self.plugin_instances[path]
+        except KeyError:
+            pass
+
+        # path can be a tuple of one or two values here
+        pname = self.liststore[path][0]
+        plugin = self.w3af.getPluginInstance(pname, "attack")
+        plugin.pname = pname
+        plugin.ptype = "attack"
+        self.plugin_instances[path] = plugin
+        return plugin
+
+
+class VulnerabTree(kbtree.KBTree):
+    '''A tree showing all the found vulnerabilities.
+
+    @param exploitlist: The widget that keeps the list of exploits
+
+    @author: Facundo Batista <facundobatista =at= taniquetil.com.ar>
+    '''
+    def __init__(self, w3af, exploitlist):
+        filter = {'vuln':True} # static, only this
+        super(VulnerabTree,self).__init__(w3af, filter, "Vulnerabilities", strict=True)
+        self.exploitlist = exploitlist
+        self.w3af = w3af
+
+        # drag and drop setup, this is the DESTINATION
+        target = [("explot-activ", 0, 1)]
+        self.enable_model_drag_dest(target, gtk.gdk.ACTION_COPY)
+        self.connect("drag-data-received", self._dragDropped)
+
+        self.show()
+
+    def _dragDropped(self, tv, drag_context, x, y, selection_data, info, timestamp):
+        '''Something was dropped (after a drag) on us.'''
+        droppoint = tv.get_dest_row_at_pos(x, y)
+        if droppoint is None:
+            return True
+
+        # collect info about source and dest
+        (destpath, where) = droppoint
+        sourcetree = drag_context.get_source_widget() 
+        sourcepath = sourcetree.get_cursor()[0]
+        sourcerow = sourcetree.liststore[sourcepath]
+
+        # it should select a destination row
+        if where not in (gtk.TREE_VIEW_DROP_INTO_OR_AFTER, gtk.TREE_VIEW_DROP_INTO_OR_BEFORE):
+            # FIXME: decide what message to show here
+            print "Not valid! You must drop into a row, not in the middle of two"
+            return
+
+        # get real objects
+        exploit = self.exploitlist.getPluginInstance(sourcepath)
+        dstvuln = self.getInstance(destpath)
+        if dstvuln is None:
+            # FIXME: decide what message to show here
+            print "Not valid! You must select a vulnerability as destination"
+            return
+
+        self._executeExploit(exploit, dstvuln)
+        return
+
+    def _executeExploit(self, expl, vuln):
+        '''Exploits a vulnerability.
+
+        This raises a text dialog that informs how the exploit
+        is going until it finishes.
+
+        @param expl: the exploit to use
+        @param vuln: the vulnerability to exploit
+        '''
+        dlg = entries.TextDialog("Exploit!")
+
+        # get the info, and see if we can go for it
+        dlg.addMessage("Checking suitability...")
+        vulnid = vuln.getId()
+
+        try:
+            canexploit = expl.canExploit(vulnid)
+        except w3afException, e:
+            dlg.addMessage("\nERROR:")
+            dlg.addMessage(str(e))
+            dlg.done()
+            return
+
+        if not canexploit:
+            dlg.addMessage("Sorry, this attack can not exploit this vulnerability")
+            dlg.done()
+            return
+        dlg.addMessage("ok")
+
+        # ok, go for it!
+        dlg.addMessage("Exploiting...")
+        try:
+            expl.exploit()
+        except w3afException, e:
+            dlg.addMessage(str(e))
+        else:
+            dlg.addMessage("Done")
+        dlg.done()
+            
+
+class Proxies(gtk.Label):
+    '''Dummy class to alert that this will be done later.
+
+    @author: Facundo Batista <facundobatista =at= taniquetil.com.ar>
+    '''
+    def __init__(self):
+        msg = "The 'Proxies' functionality\nwill be implemented\nin the future."
+        super(Proxies,self).__init__(msg)
+        self.set_justify(gtk.JUSTIFY_CENTER)
+        self.show()
+
+class ExploitBody(gtk.HPaned):
+    '''Body of the exploit tab.
+
+    @param w3af: the Core instance.
+
+    @author: Facundo Batista <facundobatista =at= taniquetil.com.ar>
+    '''
+    def __init__(self, w3af):
+        super(ExploitBody,self).__init__()
+        self.w3af = w3af
+        self.panels = {}
+
+        # left & right
+        exploitvuln = self._buildExplVuln()
+        interac = self._buildInteraction()
+        self.panels["exploitvuln"] = exploitvuln
+        self.panels["interac"] = interac
+
+        # pack it all and show
+        self.pack1(exploitvuln)
+        self.pack2(interac)
+        self.set_position(500)
+
+        self.panactiv = dict((x,True) for x in self.panels)
+        self.show()
+
+
+    def _buildExplVuln(self):
+        '''The pane with the exploit list and vulnerabilities tree.'''
+        pan = gtk.HPaned()
+
+        # left
+        exploitlist = ExploitTree(self.w3af)
+        scrollwin1 = gtk.ScrolledWindow()
+        scrollwin1.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        scrollwin1.add_with_viewport(exploitlist)
+        scrollwin1.show()
+
+        # rigth
+        interac = VulnerabTree(self.w3af, exploitlist)
+        scrollwin2 = gtk.ScrolledWindow()
+        scrollwin2.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        scrollwin2.add_with_viewport(interac)
+        scrollwin2.show()
+
+        # pack it all and show
+        pan.pack1(scrollwin1)
+        pan.pack2(scrollwin2)
+        pan.set_position(250)
+        pan.show()
+        return pan
+
+
+    def _buildInteraction(self):
+        '''The pane with the shells and proxies list.'''
+        pan = gtk.VPaned()
+
+        # left
+        shells = Shells()
+        scrollwin1 = gtk.ScrolledWindow()
+        scrollwin1.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        scrollwin1.add_with_viewport(shells)
+        scrollwin1.show()
+
+        # rigth
+        proxies = Proxies()
+        scrollwin2 = gtk.ScrolledWindow()
+        scrollwin2.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        scrollwin2.add_with_viewport(proxies)
+        scrollwin2.show()
+
+        # pack it all and show
+        pan.pack1(scrollwin1)
+        pan.pack2(scrollwin2)
+        pan.set_position(200)
+        pan.show()
+        return pan
+
+    def togglePanels(self, panel, active):
+        '''Turn on and off the panels.
+
+        @param panel: The panel to turn on and off
+        @param active: If it should be activated or deactivated
+        '''
+        widg = self.panels[panel]
+        if active:
+            widg.show()
+        else:
+            widg.hide()
+        self.panactiv[panel] = active
