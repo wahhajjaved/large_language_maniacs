@@ -1,0 +1,184 @@
+import logging, commands, random, re
+from autotest.client.shared import error
+from autotest.client import utils
+from virttest import utils_misc, utils_test, utils_net
+
+@error.context_aware
+def run_jumbo(test, params, env):
+    """
+    Test the RX jumbo frame function of vnics:
+
+    1) Boot the VM.
+    2) Change the MTU of guest nics and host taps depending on the NIC model.
+    3) Add the static ARP entry for guest NIC.
+    4) Wait for the MTU ok.
+    5) Verify the path MTU using ping.
+    6) Ping the guest with large frames.
+    7) Increment size ping.
+    8) Flood ping the guest with large frames.
+    9) Verify the path MTU.
+    10) Recover the MTU.
+
+    @param test: QEMU test object.
+    @param params: Dictionary with the test parameters.
+    @param env: Dictionary with test environment.
+    """
+    def get_drive_num(session, path):
+
+        """
+        return file path drive
+        """
+        cmd = "wmic datafile where \"path='%s'\" get drive" % path
+        info = session.cmd_output(cmd, timeout=360).strip()
+        drive_num = re.search(r'(\w):', info, re.M)
+        if not drive_num:
+            raise error.TestError("No path %s in your guest" % path)
+        return drive_num.group()
+
+
+    timeout = int(params.get("login_timeout", 360))
+    mtu = params.get("mtu", "1500")
+    max_icmp_pkt_size = int(mtu) - 28
+    flood_time = params.get("flood_time", "300")
+    os_type = params.get("os_type")
+    os_variant = params.get("os_variant")
+
+    vm = env.get_vm(params["main_vm"])
+    vm.verify_alive()
+    session = vm.wait_for_login(timeout=timeout)
+    session_serial = vm.wait_for_serial_login(timeout=timeout)
+
+    ifname = vm.get_ifname(0)
+    ip = vm.get_address(0)
+    if ip is None:
+        raise error.TestError("Could not get the IP address")
+
+    try:
+        error.context("Changing the MTU of guest", logging.info)
+        # Environment preparation
+        mac = vm.get_mac_address(0)
+        if os_type == "linux":
+            ethname = utils_net.get_linux_ifname(session, mac)
+            guest_mtu_cmd = "ifconfig %s mtu %s" % (ethname , mtu)
+        else:
+            connection_id = utils_net.get_windows_nic_attribute(session,
+                                                            "macaddress",
+                                                            mac,
+                                                            "netconnectionid")
+
+            index = utils_net.get_windows_nic_attribute(session,
+                                                        "netconnectionid",
+                                                        connection_id,
+                                                        "index")
+            if os_variant == "winxp":
+                pnpdevice_id = utils_net.get_windows_nic_attribute(session,
+                                                            "netconnectionid",
+                                                             connection_id,
+                                                             "pnpdeviceid")
+                devcon_path = r"\\devcon\\wxp_x86\\"
+                cd_num = get_drive_num(session, devcon_path)
+                copy_cmd = r"xcopy %s\devcon\wxp_x86\devcon.exe c:\ " % cd_num
+                session.cmd(copy_cmd)
+
+
+            reg_set_mtu_pattern = params.get("reg_mtu_cmd")
+            mtu_key_word = params.get("mtu_key", "MTU")
+            reg_set_mtu = reg_set_mtu_pattern % (int(index), mtu_key_word,
+                                                 int(mtu))
+            guest_mtu_cmd = "%s " % reg_set_mtu
+
+        session.cmd(guest_mtu_cmd)
+        if os_type == "windows":
+            mode = "netsh"
+            if os_variant == "winxp":
+                connection_id = pnpdevice_id.split("&")[-1]
+                mode = "devcon"
+            utils_net.restart_windows_guest_network(session_serial,
+                                                    connection_id,
+                                                    mode=mode)
+
+
+        error.context("Chaning the MTU of host tap ...", logging.info)
+        host_mtu_cmd = "ifconfig %s mtu %s" % (ifname, mtu)
+        utils.run(host_mtu_cmd)
+
+        error.context("Add a temporary static ARP entry ...", logging.info)
+        arp_add_cmd = "arp -s %s %s -i %s" % (ip, mac, ifname)
+        utils.run(arp_add_cmd)
+
+        def is_mtu_ok():
+            s, _ = utils_test.ping(ip, 1, interface=ifname,
+                                       packetsize=max_icmp_pkt_size,
+                                       hint="do", timeout=2)
+            return s == 0
+
+        def verify_mtu():
+            logging.info("Verify the path MTU")
+            s, o = utils_test.ping(ip, 10, interface=ifname,
+                                       packetsize=max_icmp_pkt_size,
+                                       hint="do", timeout=15)
+            if s != 0 :
+                logging.error(o)
+                raise error.TestFail("Path MTU is not as expected")
+            if utils_test.get_loss_ratio(o) != 0:
+                logging.error(o)
+                raise error.TestFail("Packet loss ratio during MTU "
+                                     "verification is not zero")
+
+        def flood_ping():
+            logging.info("Flood with large frames")
+            utils_test.ping(ip, interface=ifname,
+                                packetsize=max_icmp_pkt_size,
+                                flood=True, timeout=float(flood_time))
+
+        def large_frame_ping(count=100):
+            logging.info("Large frame ping")
+            _, o = utils_test.ping(ip, count, interface=ifname,
+                                       packetsize=max_icmp_pkt_size,
+                                       timeout=float(count) * 2)
+            ratio = utils_test.get_loss_ratio(o)
+            if ratio != 0:
+                raise error.TestFail("Loss ratio of large frame ping is %s" %
+                                     ratio)
+
+        def size_increase_ping(step=random.randrange(90, 110)):
+            logging.info("Size increase ping")
+            for size in range(0, max_icmp_pkt_size + 1, step):
+                logging.info("Ping %s with size %s", ip, size)
+                s, o = utils_test.ping(ip, 1, interface=ifname,
+                                           packetsize=size,
+                                           hint="do", timeout=1)
+                if s != 0:
+                    s, o = utils_test.ping(ip, 10, interface=ifname,
+                                               packetsize=size,
+                                               adaptive=True, hint="do",
+                                               timeout=20)
+
+                    if utils_test.get_loss_ratio(o) > int(params.get(
+                                                      "fail_ratio", 50)):
+                        raise error.TestFail("Ping loss ratio is greater "
+                                             "than 50% for size %s" % size)
+
+        logging.info("Waiting for the MTU to be OK")
+        wait_mtu_ok = 10
+        if not utils_misc.wait_for(is_mtu_ok, wait_mtu_ok, 0, 1):
+            logging.debug(commands.getoutput("ifconfig -a"))
+            raise error.TestError("MTU is not as expected even after %s "
+                                  "seconds" % wait_mtu_ok)
+
+        # Functional Test
+        error.context("Checking whether MTU change is ok", logging.info)
+        verify_mtu()
+        large_frame_ping()
+        size_increase_ping()
+
+        # Stress test
+        flood_ping()
+        verify_mtu()
+
+    finally:
+        # Environment clean
+        if session:
+            session.close()
+        logging.info("Removing the temporary ARP entry")
+        utils.run("arp -d %s -i %s" % (ip, ifname))

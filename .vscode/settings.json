@@ -1,7 +1,7 @@
 {
     "editor.hover.enabled": false,
     "editor.hover.sticky": false,
-    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.typeCheckingMode": "standard",
     "editor.quickSuggestions": {
         "other": "off"
     },
@@ -9,5 +9,18 @@
     "editor.quickSuggestionsDelay": 2000,
     "editor.suggest.snippetsPreventQuickSuggestions": true,
     "editor.hover.delay": 10000,
-    "workbench.hover.delay": 5000
+    "workbench.hover.delay": 5000,
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/*.gz": true,
+        "downloaded_data": true,
+    },
+    "python.analysis.exclude": [
+        "downloaded_data"
+    ]
 }

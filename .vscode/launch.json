@@ -19,6 +19,14 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "ctssb_to_jsonl",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.ctssb_to_jsonl",
+            "console": "integratedTerminal",
+            "justMyCode":false
+        },
+        {
             "name": "fine_tune_deepseek_ctssb",
             "type": "debugpy",
             "request": "launch",
@@ -34,5 +42,6 @@
             "console": "integratedTerminal",
             "justMyCode":false
         }
+
     ]
 }
