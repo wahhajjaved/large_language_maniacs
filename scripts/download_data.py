@@ -145,7 +145,7 @@ def download_dataset(dataset: list[dict[str, str]], save_dir: pathlib.Path):
     # for entry in dataset:
     #     download_entry(entry, save_dir)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(download_entry_concurrent, entry, save_dir) for entry in dataset]
         for future in concurrent.futures.as_completed(futures):
             try:
