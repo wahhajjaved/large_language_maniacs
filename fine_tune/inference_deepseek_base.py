@@ -41,10 +41,10 @@ def prepare_queries() -> list[DeepseekQuery]:
 
 
 def main():
-    queries = prepare_queries()
-    print(f"{len(queries): } queries created. Queries using {sys.getsizeof(queries) / 1024: } MB")
+    #queries = prepare_queries()
+    #print(f"{len(queries): } queries created. Queries using {sys.getsizeof(queries) / 1024: } MB")
 	
-    print(f"Downloading model into {model_dir.absolute()}")
+    #print(f"Downloading model into {model_dir.absolute()}")
 	
     tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
     trust_remote_code=True, cache_dir=model_dir)
@@ -60,7 +60,7 @@ def main():
     generations = []
     references = []
 
-    for query in queries:
+    for query in dataset:
         inputs = tokenizer(
             (q.inference_query for q in queries),
             # write a hello world program in python",
