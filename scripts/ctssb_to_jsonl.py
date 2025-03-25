@@ -1,11 +1,12 @@
 import ast
+import concurrent.futures
 import json
 import pathlib
 import typing
 
-ENTRY_PER_PATTERN_TRAINING = 900
-ENTRY_PER_PATTERN_VALIDATION = 150
-ENTRY_PER_PATTERN_TESTING = 100
+START_AT_TRAINING = 0
+START_AT_VALIDATION = 0
+START_AT_TESTING = 0
 
 # input
 CTSSB_TRAINING_SAVE_DIR: pathlib.Path = pathlib.Path("downloaded_data/ctssb/training")
@@ -60,7 +61,7 @@ class DatasetEntry:
 
         for b, a in zip(before_functions, after_functions):
             if b.name != a.name:
-                raise ValueError(f"before_functions and after_functions list different.")
+                raise SyntaxError(f"before_functions and after_functions list different.")
             before_text = ast.get_source_segment(self._before_file, b)
             after_text = ast.get_source_segment(self._after_file, a)
             if before_text != after_text:
@@ -88,6 +89,73 @@ def load_dataset_file(path: pathlib.Path) -> list:
     return dataset
 
 
+def save_dataset_as_jsonl_2(data: list[tuple[str, str]], save_location):
+    lines = []
+    for entry in data:
+        line = {"input": entry[0], "output": entry[1]}
+        lines.append(json.dumps(line))
+
+    with open(save_location, "w") as f:
+        for line in lines:
+            f.write(line + "\n")
+
+
+def create_entry(
+    entry_metadata: dict[str, str], entry_type: typing.Literal["training", "validation", "testing"]
+) -> tuple[str | None, str | None]:
+    entry = DatasetEntry(entry_metadata, entry_type)
+    return entry.before_function_text, entry.after_function_text
+
+
+def pool_wrapper(
+    dataset: list[dict[str, str]],
+    entries: list[tuple[str, str]],
+    entry_type: typing.Literal["training", "validation", "testing"],
+):
+    with concurrent.futures.ProcessPoolExecutor(max_workers=24) as executor:
+        futures = {}
+        for entry_metadata in dataset:
+            future = executor.submit(create_entry, entry_metadata, entry_type)
+            futures[future] = entry_metadata
+
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                before_function_text, after_function_text = future.result()
+                if not before_function_text or not after_function_text:
+                    entry_metadata = futures[future]
+                    print(f"Error: DatasetEntry creation failed for {entry_metadata}")
+                    break
+
+                entries.append((before_function_text, after_function_text))
+
+            except SyntaxError as e:
+                entry_metadata = futures[future]
+                print(f"Could not parse {entry_metadata['project']}_{entry_metadata['commit_sha']}")
+                with open(DEFUNCT_PROJECTS_PATH, "a") as f:
+                    f.write(json.dumps(entry_metadata) + "\n")
+            except FileNotFoundError as e:
+                print(e)
+                # executor.shutdown(cancel_futures=True)
+                # break
+
+
+def process_data_concurrently():
+    testing_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TESTING)
+    testing_dataset_entries: list[tuple[str, str]] = []
+    pool_wrapper(testing_dataset[START_AT_TESTING:], testing_dataset_entries, "testing")
+    save_dataset_as_jsonl_2(testing_dataset_entries, CTSSB_TESTING_DATASET)
+
+    # validation_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_VALIDATION)
+    # validation_dataset_entries: list[tuple[str, str]] = []
+    # pool_wrapper(validation_dataset, validation_dataset_entries, "validation")
+    # save_dataset_as_jsonl_2(validation_dataset_entries, CTSSB_VALIDATION_DATASET)
+
+    # training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING)
+    # training_dataset_entries: list[tuple[str, str]] = []
+    # pool_wrapper(training_dataset, training_dataset_entries, "training")
+    # save_dataset_as_jsonl_2(training_dataset_entries, CTSSB_TRAINING_DATASET)
+
+
 def save_dataset_as_jsonl(data: list[DatasetEntry], save_location):
     lines = []
     for entry in data:
@@ -99,7 +167,7 @@ def save_dataset_as_jsonl(data: list[DatasetEntry], save_location):
             f.write(line + "\n")
 
 
-def main():
+def process_data_sequentially():
     training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING)
     validation_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_VALIDATION)
     testing_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TESTING)
@@ -108,9 +176,20 @@ def main():
     validation_dataset_entries: list[DatasetEntry] = []
     testing_dataset_entries: list[DatasetEntry] = []
 
-    for line in testing_dataset:
+    # for line in testing_dataset:
+    #     try:
+    #         testing_dataset_entries.append(DatasetEntry(entry_metadata=line, entry_type="testing"))
+    #     except SyntaxError:
+    #         print(f"Could not parse {line['project']}_{line['commit_sha']}")
+    #         with open(DEFUNCT_PROJECTS_PATH, "a") as f:
+    #             f.write(json.dumps(line) + "\n")
+    #     except FileNotFoundError as e:
+    #         print(e)
+    #         break
+
+    for line in validation_dataset:
         try:
-            testing_dataset_entries.append(DatasetEntry(entry_metadata=line, entry_type="testing"))
+            validation_dataset_entries.append(DatasetEntry(entry_metadata=line, entry_type="validation"))
         except SyntaxError:
             print(f"Could not parse {line['project']}_{line['commit_sha']}")
             with open(DEFUNCT_PROJECTS_PATH, "a") as f:
@@ -119,7 +198,25 @@ def main():
             print(e)
             break
 
-    save_dataset_as_jsonl(testing_dataset_entries, CTSSB_TESTING_DATASET)
+    # for line in training_dataset:
+    #     try:
+    #         training_dataset_entries.append(DatasetEntry(entry_metadata=line, entry_type="training"))
+    #     except SyntaxError:
+    #         print(f"Could not parse {line['project']}_{line['commit_sha']}")
+    #         with open(DEFUNCT_PROJECTS_PATH, "a") as f:
+    #             f.write(json.dumps(line) + "\n")
+    #     except FileNotFoundError as e:
+    #         print(e)
+    #         break
+
+    # save_dataset_as_jsonl(testing_dataset_entries, CTSSB_TESTING_DATASET)
+    save_dataset_as_jsonl(validation_dataset_entries, CTSSB_VALIDATION_DATASET)
+    # save_dataset_as_jsonl(training_dataset_entries, CTSSB_TRAINING_DATASET)
+
+
+def main():
+    process_data_concurrently()
+    # process_data_sequentially()
 
 
 if __name__ == "__main__":

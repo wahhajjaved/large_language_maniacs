@@ -3,7 +3,7 @@ import itertools
 import json
 import pathlib
 
-ENTRY_PER_PATTERN_TRAINING = 900
+ENTRY_PER_PATTERN_TRAINING = 850
 ENTRY_PER_PATTERN_VALIDATION = 150
 ENTRY_PER_PATTERN_TESTING = 100
 
@@ -49,12 +49,12 @@ def categorize_using_pattern(
             continue
         seen_keys.add(key)
 
-        if len(training_data.get(pattern, [])) < ENTRY_PER_PATTERN_TRAINING:
-            training_data.setdefault(pattern, []).append(entry)
+        if len(testing_data.get(pattern, [])) < ENTRY_PER_PATTERN_TESTING:
+            testing_data.setdefault(pattern, []).append(entry)
         elif len(validation_data.get(pattern, [])) < ENTRY_PER_PATTERN_VALIDATION:
             validation_data.setdefault(pattern, []).append(entry)
-        elif len(testing_data.get(pattern, [])) < ENTRY_PER_PATTERN_TESTING:
-            testing_data.setdefault(pattern, []).append(entry)
+        elif len(training_data.get(pattern, [])) < ENTRY_PER_PATTERN_TRAINING:
+            training_data.setdefault(pattern, []).append(entry)
 
 
 def save_dataset(data: list[list[dict]], save_location):
@@ -81,17 +81,19 @@ def print_stats(
     validation_data: dict[str, list[dict]],
     testing_data: dict[str, list[dict]],
 ):
-    print(" ** Training Data **")
-    print(f"{len(training_data.keys())} patterns")
-    for k, v in training_data.items():
+    print("\n ** Testing Data **")
+    print(f"{len(testing_data.keys())} patterns")
+    for k, v in testing_data.items():
         print(f"{k}: {len(v)}")
+
     print("\n ** Validation Data **")
     print(f"{len(validation_data.keys())} patterns")
     for k, v in validation_data.items():
         print(f"{k}: {len(v)}")
-    print("\n ** Testing Data **")
-    print(f"{len(testing_data.keys())} patterns")
-    for k, v in testing_data.items():
+
+    print(" ** Training Data **")
+    print(f"{len(training_data.keys())} patterns")
+    for k, v in training_data.items():
         print(f"{k}: {len(v)}")
 
 
