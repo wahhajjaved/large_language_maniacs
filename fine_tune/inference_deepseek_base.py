@@ -30,7 +30,9 @@ dataset = load_dataset("json", data_files=str(TESTING_DATASET), split="train")
 
 def main():
     tokenizer = AutoTokenizer.from_pretrained(
-        "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct", trust_remote_code=True, cache_dir=model_dir
+        "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+        trust_remote_code=True,
+        cache_dir=model_dir,
     )
     model = AutoModelForCausalLM.from_pretrained(
         "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",

@@ -134,7 +134,7 @@ packing = False
 
 
 def main():
-    dataset = load_dataset("json", data_files=str(CTSSB_TRAINING_DATASET))
+    dataset = load_dataset("json", data_files=str(CTSSB_TRAINING_DATASET), split="train")
 
     # Load tokenizer and model with QLoRA configuration
     compute_dtype = getattr(torch, bnb_4bit_compute_dtype)
