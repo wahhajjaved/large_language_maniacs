@@ -21,7 +21,7 @@ DEFUNCT_PROJECTS_PATH: pathlib.Path = pathlib.Path("datasets/ctssb_data_1M/defun
 # add github token here for increased api rate limit
 token: str = "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"
 
-FROM_CACHE_ONLY: bool = True
+FROM_CACHE_ONLY: bool = False
 
 
 def load_dataset_file(path: pathlib.Path) -> list:

@@ -151,20 +151,20 @@ def process_data_concurrently():
     validation_errors = 0
     training_errors = 0
 
-    testing_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TESTING)
-    testing_dataset_entries: list[tuple[str, str]] = []
-    testing_errors = pool_wrapper(testing_dataset[START_AT_TESTING:], testing_dataset_entries, "testing")
-    save_dataset_as_jsonl_2(testing_dataset_entries, CTSSB_TESTING_DATASET)
+    # testing_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TESTING)
+    # testing_dataset_entries: list[tuple[str, str]] = []
+    # testing_errors = pool_wrapper(testing_dataset[START_AT_TESTING:], testing_dataset_entries, "testing")
+    # save_dataset_as_jsonl_2(testing_dataset_entries, CTSSB_TESTING_DATASET)
 
     # validation_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_VALIDATION)
     # validation_dataset_entries: list[tuple[str, str]] = []
     # validation_errors = pool_wrapper(validation_dataset[START_AT_VALIDATION:], validation_dataset_entries, "validation")
     # save_dataset_as_jsonl_2(validation_dataset_entries, CTSSB_VALIDATION_DATASET)
 
-    # training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING)
-    # training_dataset_entries: list[tuple[str, str]] = []
-    # training_errors = pool_wrapper(training_dataset[START_AT_TRAINING:], training_dataset_entries, "training")
-    # save_dataset_as_jsonl_2(training_dataset_entries, CTSSB_TRAINING_DATASET)
+    training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING)
+    training_dataset_entries: list[tuple[str, str]] = []
+    training_errors = pool_wrapper(training_dataset[START_AT_TRAINING:], training_dataset_entries, "training")
+    save_dataset_as_jsonl_2(training_dataset_entries, CTSSB_TRAINING_DATASET)
 
     print(f"\n\nDatasets converted to jsonl.")
     print(f"{testing_errors=}")
