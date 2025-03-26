@@ -3,6 +3,8 @@ import pathlib
 import sys
 import warnings
 
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 from fine_tune.load_data import prepare_deepseek_ctssb_queries
 
 model_dir = pathlib.Path("models")
@@ -12,7 +14,7 @@ import torch
 from peft import PeftConfig, PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging
 
-logging.set_verbosity_error()
+from datasets import load_dataset
 
 model_name = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
 adapter_dir = pathlib.Path(
@@ -21,6 +23,7 @@ adapter_dir = pathlib.Path(
 )
 
 save_dir = pathlib.Path("output_data/ctssb")
+TESTING_DATASET = pathlib.Path("datasets/ctssb_testing.jsonl")
 
 
 def main():
@@ -44,17 +47,16 @@ def main():
     model.merge_and_unload()
 
     # Inference
-    queries = prepare_deepseek_ctssb_queries("testing")
+    dataset = load_dataset("json", data_files=str(TESTING_DATASET), split="train")
 
-    for q in queries:
-        print(f"Running inference on {q.before_file_name}")
-        inputs = tokenizer(q.inference_query, return_tensors="pt").to("cuda")
+    for query in dataset:
+        inputs = tokenizer(
+            query["input"],
+            return_tensors="pt",
+        ).to(model.device)
         outputs = model.generate(**inputs, max_new_tokens=100)
-        save_file_name = q.before_file_name.replace("_before.py", "_inference.py")
-        output_path = pathlib.Path(save_dir, save_file_name)
         output = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        with open(output_path, "w") as f:
-            f.write(output)
+        print(output)
 
 
 if __name__ == "__main__":

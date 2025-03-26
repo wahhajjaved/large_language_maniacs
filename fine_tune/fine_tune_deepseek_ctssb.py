@@ -35,9 +35,6 @@ from datasets import Dataset, load_dataset
 from fine_tune.deepseek_query import DeepseekQuery
 from fine_tune.load_data import prepare_deepseek_ctssb_queries
 
-# Ignore warnings
-logging.set_verbosity_error()
-
 CTSSB_TRAINING_DATASET: pathlib.Path = pathlib.Path("datasets/ctssb_training.jsonl")
 model_name = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
 new_model = "DeepSeek-Coder-V2-Lite-Instruct-python-finetuned-ctssb"
@@ -135,16 +132,9 @@ max_seq_length = None
 # Pack multiple short examples in the same input sequence to increase efficiency
 packing = False
 
-# Load the entire model on the GPU 0
-device_map = {"": 0}
-
 
 def main():
-    # queries = prepare_deepseek_ctssb_queries("training")
-    # dataset = Dataset.from_list([q.query for q in queries], split="train")
-    # print(f"{len(queries): } queries created. Queries using {sys.getsizeof(queries) / 1024: } MB")
-
-    dataset = load_dataset("json", data_files=CTSSB_TRAINING_DATASET)
+    dataset = load_dataset("json", data_files=str(CTSSB_TRAINING_DATASET))
 
     # Load tokenizer and model with QLoRA configuration
     compute_dtype = getattr(torch, bnb_4bit_compute_dtype)
@@ -166,7 +156,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         quantization_config=bnb_config,
-        device_map=device_map,
+        device_map="auto",
         trust_remote_code=True,
     )
     model.config.use_cache = False
