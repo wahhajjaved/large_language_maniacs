@@ -1,6 +1,21 @@
+# Run this with DDP with "accelerate launch fine_tune/fine_tune_deepseek_ctssb.py"
+# Run accelerate config and choose the following options (set gpu ids according to which is free)
+#  In which compute environment are you running? This machine
+# Which type of machine are you using? multi-GPU
+# How many different machines will you use (use more than 1 for multi-node training)? [1]: 1
+# Should distributed operations be checked while running for errors? This can avoid timeout issues but will be slower. [yes/NO]: no
+# Do you wish to optimize your script with torch dynamo?[yes/NO]:no
+# Do you want to use DeepSpeed? [yes/NO]: no
+# Do you want to use FullyShardedDataParallel? [yes/NO]: no
+# Do you want to use TensorParallel? [yes/NO]: no
+# Do you want to use Megatron-LM ? [yes/NO]: no
+# How many GPU(s) should be used for distributed training? [1]:2
+# What GPU(s) (by id) should be used for training on this machine as a comma-seperated list? [all]:1,2
+# Would you like to enable numa efficiency? (Currently only supported on NVIDIA hardware). [yes/NO]: no
+# Do you wish to use mixed precision? no
+
 import os
 import pathlib
-import sys
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -18,204 +33,220 @@ model_dir = getModelsPath()
 os.environ["HF_HOME"] = str(model_dir.absolute())
 
 
+import peft
 import torch
-from peft import LoraConfig, PeftModel
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    BitsAndBytesConfig,
-    HfArgumentParser,
-    TrainingArguments,
-    logging,
-    pipeline,
-)
-from trl import SFTTrainer
 
-from datasets import Dataset, load_dataset
-from fine_tune.deepseek_query import DeepseekQuery
-from fine_tune.load_data import prepare_deepseek_ctssb_queries
+# from accelerate import PartialState
+from peft import LoraConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from trl import SFTConfig, SFTTrainer
 
-CTSSB_TRAINING_DATASET: pathlib.Path = pathlib.Path("datasets/ctssb_training.jsonl")
+from datasets import load_dataset
+
+CTSSB_TRAINING_DATASET: pathlib.Path = pathlib.Path("datasets/ctssb_testing.jsonl")
 model_name = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
 new_model = "DeepSeek-Coder-V2-Lite-Instruct-python-finetuned-ctssb"
 
-################################################################################
-# QLoRA parameters
-################################################################################
 
-# LoRA attention dimension
-lora_r = 64
+# device_string = PartialState().process_index
+# device_map = {"": device_string}
+device_map = {"": torch.cuda.current_device()}
 
-# Alpha parameter for LoRA scaling
-lora_alpha = 16
+max_seq_length = 2048
 
-# Dropout probability for LoRA layers
-lora_dropout = 0.1
 
-################################################################################
-# bitsandbytes parameters
-################################################################################
+tokenizer = AutoTokenizer.from_pretrained(
+    model_name,
+    trust_remote_code=True,
+    cache_dir=model_dir,
+)
+tokenizer.padding_side = "right"
+tokenizer.pad_token = tokenizer.eos_token
 
-# Activate 4-bit precision base model loading
-use_4bit = True
 
-# Compute dtype for 4-bit base models
-bnb_4bit_compute_dtype = "float16"
+def filter_long_entry(example):
+    prompt = f"input: \n{example['input']} \noutput: \n"
+    full_text = prompt + example["output"]
+    num_tokens = len(tokenizer.backend_tokenizer.encode(full_text).ids)
+    return num_tokens <= tokenizer.model_max_length
 
-# Quantization type (fp4 or nf4)
-bnb_4bit_quant_type = "nf4"
 
-# Activate nested quantization for 4-bit base models (double quantization)
-use_nested_quant = False
+def format_dataset_batched(examples):
+    prompts = [f"input: \n{inp} \noutput: \n" for inp in examples["input"]]
+    full_texts = [p + out for p, out in zip(prompts, examples["output"])]
 
-################################################################################
-# TrainingArguments parameters
-################################################################################
+    tokenized = tokenizer(
+        full_texts,
+        truncation=True,
+        max_length=max_seq_length,
+        padding="max_length",  # ensures padding
+    )
 
-# Number of training epochs
-num_train_epochs = 1
+    prompt_lengths = [len(tokenizer(p)["input_ids"]) for p in prompts]
+    labels = []
 
-# Enable fp16/bf16 training (set bf16 to True with an A100)
-fp16 = False
-bf16 = False
+    for ids, p_len in zip(tokenized["input_ids"], prompt_lengths):
+        label = ids.copy()
+        label[:p_len] = [-100] * p_len
+        labels.append(label)
 
-# Batch size per GPU for training
-per_device_train_batch_size = 4
+    tokenized["labels"] = labels
+    return tokenized
 
-# Batch size per GPU for evaluation
-per_device_eval_batch_size = 4
 
-# Number of update steps to accumulate the gradients for
-gradient_accumulation_steps = 1
+def format_dataset(example):
+    # Construct the prompt and full text
+    prompt = f"input: \n{example['input']} \noutput: \n"
+    full_text = prompt + example["output"]
 
-# Enable gradient checkpointing
-gradient_checkpointing = True
+    # Tokenize the full text
+    tokenized = tokenizer(
+        full_text,
+        truncation=True,
+        max_length=max_seq_length,
+        padding="max_length",
+    )
+    # tokenized = tokenizer(full_text)
 
-# Maximum gradient normal (gradient clipping)
-max_grad_norm = 0.3
+    # Tokenize only the prompt to determine its length
+    prompt_length = len(tokenizer(prompt)["input_ids"])
 
-# Initial learning rate (AdamW optimizer)
-learning_rate = 2e-4
+    # Copy the tokenized input_ids to labels
+    labels = tokenized["input_ids"].copy()
 
-# Weight decay to apply to all layers except bias/LayerNorm weights
-weight_decay = 0.001
+    # Set the prompt tokens to -100 to mask them during loss computation
+    labels[:prompt_length] = [-100] * prompt_length
+    tokenized["labels"] = labels
+    return tokenized
 
-# Optimizer to use
-optim = "paged_adamw_32bit"
 
-# Learning rate schedule
-lr_scheduler_type = "cosine"
+def format_dataset2(example):
+    # Construct the prompt and full text
+    prompt = f"input: \n{example['input']} \noutput: \n"
+    full_text = prompt + example["output"]
+    return {"text": full_text}
 
-# Number of training steps (overrides num_train_epochs)
-max_steps = -1
 
-# Ratio of steps for a linear warmup (from 0 to learning rate)
-warmup_ratio = 0.03
+def print_sequence_lengths(tokenized_dataset):
+    # to use this this line in format_dataset() needs to be replaced
+    # tokenized = tokenizer(full_text, truncation=True, max_length=max_seq_length, padding="max_length")
+    # tokenized = tokenizer(full_text)
 
-# Group sequences into batches with same length
-# Saves memory and speeds up training considerably
-group_by_length = True
+    seq_lengths = [len(example["input_ids"]) for example in tokenized_dataset]
+    print(f"The max sequence length in the dataset is {max(seq_lengths)}")
+    print(f"The min sequence length in the dataset is {min(seq_lengths)}")
+    print(f"The mean sequence length in the dataset is {sum(seq_lengths)/len(seq_lengths)}")
 
-# Save checkpoint every X updates steps
-save_steps = 0
-
-# Log every X updates steps
-logging_steps = 25
-
-################################################################################
-# SFT parameters
-################################################################################
-
-# Maximum sequence length to use
-max_seq_length = None
-
-# Pack multiple short examples in the same input sequence to increase efficiency
-packing = False
+    for i in range(1, 16):
+        v = 2**i
+        count = sum(1 for l in seq_lengths if l > v)
+        print(f"Items with token length greater than {v}: {count}")
 
 
 def main():
-    dataset = load_dataset("json", data_files=str(CTSSB_TRAINING_DATASET), split="train")
 
-    # Load tokenizer and model with QLoRA configuration
-    compute_dtype = getattr(torch, bnb_4bit_compute_dtype)
+    dataset = load_dataset("json", data_files=str(CTSSB_TRAINING_DATASET), split="train")
+    dataset = dataset.filter(filter_long_entry, load_from_cache_file=True)
+    # dataset2 = dataset.map(format_dataset2, batched=False)
+
+    tokenized_dataset = dataset.map(format_dataset, batched=False, load_from_cache_file=True)
+    # tokenized_dataset = dataset.map(format_dataset_batched, batched=True, load_from_cache_file=True)
+    # tokenized_dataset = tokenized_dataset.select(range(100))
+
+    # print_sequence_lengths(tokenized_dataset)
+    # return
+
+    # QLoRA configuration
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=use_4bit,
-        bnb_4bit_quant_type=bnb_4bit_quant_type,
-        bnb_4bit_compute_dtype=compute_dtype,
-        bnb_4bit_use_double_quant=use_nested_quant,
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=torch.float32,
     )
-    # Check GPU compatibility with bfloat16
-    if compute_dtype == torch.float16 and use_4bit:
-        major, _ = torch.cuda.get_device_capability()
-        if major >= 8:
-            print("=" * 80)
-            print("Your GPU supports bfloat16: accelerate training with bf16=True")
-            print("=" * 80)
 
     # Load base model
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         quantization_config=bnb_config,
-        device_map="auto",
         trust_remote_code=True,
+        use_cache=True,
+        device_map="cuda:0",
     )
-    model.config.use_cache = False
-    model.config.pretraining_tp = 1
-
-    # Load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name,
-        trust_remote_code=True,
-        cache_dir=model_dir,
-    )
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "right"
+    print(f"Model memory usage after applying BitsAndBytesConfig = {model.get_memory_footprint() / 1e6} MB")
 
     # Load LoRA configuration
     peft_config = LoraConfig(
-        lora_alpha=lora_alpha,
-        lora_dropout=lora_dropout,
-        r=lora_r,
+        r=64,
+        lora_alpha=64 * 2,  # multiplier, usually 2*r
         bias="none",
+        lora_dropout=0.05,
         task_type="CAUSAL_LM",
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+        target_modules=[
+            "q_proj",
+            "kv_a_proj_with_mqa",
+            "kv_b_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
     )
+    model = peft.prepare_model_for_kbit_training(model)
+    model = peft.get_peft_model(model, peft_config)
+    print(f"Model memory usage after applying LoraConfig = {model.get_memory_footprint() / 1e6} MB")
 
     # Set training parameters
-    training_arguments = TrainingArguments(
+    training_arguments = SFTConfig(
+        ## GROUP 1: Memory usage
+        # These arguments will squeeze the most out of your GPU's RAM
+        # Checkpointing
+        gradient_checkpointing=True,  # this saves a LOT of memory
+        # Set this to avoid exceptions in newer versions of PyTorch
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        # Gradient Accumulation / Batch size
+        # Actual batch (for updating) is same (1x) as micro-batch size
+        gradient_accumulation_steps=1,
+        # The initial (micro) batch size to start off with
+        per_device_train_batch_size=4,
+        # If batch size would cause OOM, halves its size until it works
+        auto_find_batch_size=False,
+        ## GROUP 2: Dataset-related
+        max_seq_length=max_seq_length,
+        # Dataset
+        # packing a dataset means no padding is needed
+        packing=False,
+        # matches tokenized["labels"] = labels
+        label_names=["labels"],
+        ## GROUP 3: These are typical training parameters
+        num_train_epochs=10,
+        learning_rate=3e-4,
+        # Optimizer
+        # 8-bit Adam optimizer - doesn't help much if you're using LoRA!
+        optim="paged_adamw_8bit",
+        ## GROUP 4: Logging parameters
+        logging_steps=10,
+        logging_dir="./logs",
         output_dir=model_dir,
-        num_train_epochs=num_train_epochs,
-        per_device_train_batch_size=per_device_train_batch_size,
-        gradient_accumulation_steps=gradient_accumulation_steps,
-        optim=optim,
-        save_steps=save_steps,
-        logging_steps=logging_steps,
-        learning_rate=learning_rate,
-        weight_decay=weight_decay,
-        fp16=fp16,
-        bf16=bf16,
-        max_grad_norm=max_grad_norm,
-        max_steps=max_steps,
-        warmup_ratio=warmup_ratio,
-        group_by_length=group_by_length,
-        lr_scheduler_type=lr_scheduler_type,
         report_to="tensorboard",
     )
 
     # Set supervised fine-tuning parameters
     trainer = SFTTrainer(
         model=model,
-        train_dataset=dataset,
-        peft_config=peft_config,
-        dataset_text_field="input",
-        max_seq_length=max_seq_length,
-        tokenizer=tokenizer,
+        train_dataset=tokenized_dataset,
         args=training_arguments,
-        packing=packing,
+        tokenizer=tokenizer,
     )
 
+    print(f"Model is using {model.get_memory_footprint() / 1e6} MB of memory")
+    print("Final per-device train batch size:", trainer.args.per_device_train_batch_size)
+
+    print("******************************************************")
+    print("*************** Starting Fine tuning *****************")
+    print("******************************************************")
     trainer.train()
-    trainer.model.save_pretrained(pathlib.Path(model_dir, new_model))
+    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+        trainer.model.save_pretrained(pathlib.Path(model_dir, new_model))
 
 
 if __name__ == "__main__":
