@@ -13,10 +13,12 @@ CTSSB_TRAINING_SAVE_DIR: pathlib.Path = pathlib.Path("downloaded_data/ctssb/trai
 CTSSB_VALIDATION_SAVE_DIR: pathlib.Path = pathlib.Path("downloaded_data/ctssb/validation")
 CTSSB_TESTING_SAVE_DIR: pathlib.Path = pathlib.Path("downloaded_data/ctssb/testing")
 CTSSB_TRAINING: pathlib.Path = pathlib.Path("datasets/ctssb_prepared_dataset_training.jsonl")
+CTSSB_TRAINING_REDUCED: pathlib.Path = pathlib.Path("datasets/ctssb_prepared_dataset_training_reduced.jsonl")
 CTSSB_VALIDATION: pathlib.Path = pathlib.Path("datasets/ctssb_prepared_dataset_validation.jsonl")
 CTSSB_TESTING: pathlib.Path = pathlib.Path("datasets/ctssb_prepared_dataset_testing.jsonl")
 
 # output
+CTSSB_TRAINING_DATASET_REDUCED: pathlib.Path = pathlib.Path("datasets/ctssb_training_reduced.jsonl")
 CTSSB_TRAINING_DATASET: pathlib.Path = pathlib.Path("datasets/ctssb_training.jsonl")
 CTSSB_VALIDATION_DATASET: pathlib.Path = pathlib.Path("datasets/ctssb_validation.jsonl")
 CTSSB_TESTING_DATASET: pathlib.Path = pathlib.Path("datasets/ctssb_testing.jsonl")
@@ -150,6 +152,7 @@ def process_data_concurrently():
     testing_errors = 0
     validation_errors = 0
     training_errors = 0
+    training_errors_reduced = 0
 
     # testing_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TESTING)
     # testing_dataset_entries: list[tuple[str, str]] = []
@@ -161,15 +164,25 @@ def process_data_concurrently():
     # validation_errors = pool_wrapper(validation_dataset[START_AT_VALIDATION:], validation_dataset_entries, "validation")
     # save_dataset_as_jsonl_2(validation_dataset_entries, CTSSB_VALIDATION_DATASET)
 
-    training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING)
-    training_dataset_entries: list[tuple[str, str]] = []
-    training_errors = pool_wrapper(training_dataset[START_AT_TRAINING:], training_dataset_entries, "training")
-    save_dataset_as_jsonl_2(training_dataset_entries, CTSSB_TRAINING_DATASET)
+    # training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING)
+    # training_dataset_entries: list[tuple[str, str]] = []
+    # training_errors = pool_wrapper(training_dataset[START_AT_TRAINING:], training_dataset_entries, "training")
+    # save_dataset_as_jsonl_2(training_dataset_entries, CTSSB_TRAINING_DATASET)
+
+    training_dataset_reduced: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING_REDUCED)
+    training_dataset_entries_reduced: list[tuple[str, str]] = []
+    training_errors_reduced = pool_wrapper(
+        training_dataset_reduced[START_AT_TRAINING:],
+        training_dataset_entries_reduced,
+        "training",
+    )
+    save_dataset_as_jsonl_2(training_dataset_entries_reduced, CTSSB_TRAINING_DATASET_REDUCED)
 
     print(f"\n\nDatasets converted to jsonl.")
     print(f"{testing_errors=}")
     print(f"{validation_errors=}")
     print(f"{training_errors=}")
+    print(f"{training_errors_reduced=}")
 
 
 def save_dataset_as_jsonl(data: list[DatasetEntry], save_location):
@@ -184,13 +197,13 @@ def save_dataset_as_jsonl(data: list[DatasetEntry], save_location):
 
 
 def process_data_sequentially():
-    training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING)
-    validation_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_VALIDATION)
-    testing_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TESTING)
-
-    training_dataset_entries: list[DatasetEntry] = []
-    validation_dataset_entries: list[DatasetEntry] = []
-    testing_dataset_entries: list[DatasetEntry] = []
+    # training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING)
+    # validation_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_VALIDATION)
+    # testing_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TESTING)
+    #
+    # training_dataset_entries: list[DatasetEntry] = []
+    # validation_dataset_entries: list[DatasetEntry] = []
+    # testing_dataset_entries: list[DatasetEntry] = []
 
     # for line in testing_dataset:
     #     try:
@@ -203,16 +216,16 @@ def process_data_sequentially():
     #         print(e)
     #         break
 
-    for line in validation_dataset:
-        try:
-            validation_dataset_entries.append(DatasetEntry(entry_metadata=line, entry_type="validation"))
-        except SyntaxError as e:
-            print(f"Could not parse {line['project']}_{line['commit_sha']}. {e}")
-            with open(DEFUNCT_PROJECTS_PATH, "a") as f:
-                f.write(json.dumps(line) + "\n")
-        except FileNotFoundError as e:
-            print(e)
-            break
+    # for line in validation_dataset:
+    #    try:
+    #        validation_dataset_entries.append(DatasetEntry(entry_metadata=line, entry_type="validation"))
+    #    except SyntaxError as e:
+    #        print(f"Could not parse {line['project']}_{line['commit_sha']}. {e}")
+    #        with open(DEFUNCT_PROJECTS_PATH, "a") as f:
+    #            f.write(json.dumps(line) + "\n")
+    #    except FileNotFoundError as e:
+    #        print(e)
+    #        break
 
     # for line in training_dataset:
     #     try:
@@ -226,13 +239,20 @@ def process_data_sequentially():
     #         break
 
     # save_dataset_as_jsonl(testing_dataset_entries, CTSSB_TESTING_DATASET)
-    save_dataset_as_jsonl(validation_dataset_entries, CTSSB_VALIDATION_DATASET)
+    # save_dataset_as_jsonl(validation_dataset_entries, CTSSB_VALIDATION_DATASET)
     # save_dataset_as_jsonl(training_dataset_entries, CTSSB_TRAINING_DATASET)
+
+    training_dataset: list[dict[str, str]] = load_dataset_file(CTSSB_TRAINING_REDUCED)
+    training_dataset_entries: list[DatasetEntry] = []
+    for line in training_dataset[500:]:
+        training_dataset_entries.append(DatasetEntry(entry_metadata=line, entry_type="training"))
+
+    save_dataset_as_jsonl(training_dataset_entries, CTSSB_TRAINING_DATASET_REDUCED)
 
 
 def main():
-    process_data_concurrently()
-    # process_data_sequentially()
+    # process_data_concurrently()
+    process_data_sequentially()
     print()
 
 

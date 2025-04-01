@@ -27,6 +27,14 @@
             "justMyCode":false
         },
         {
+            "name": "reduce_dataset",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.reduce_dataset",
+            "console": "integratedTerminal",
+            "justMyCode":false
+        },
+        {
             "name": "inference_deepseek_base",
             "type": "debugpy",
             "request": "launch",
