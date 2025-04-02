@@ -1,0 +1,780 @@
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def _build_werkzeug_request_data(request):
+    request_data = {
+        'url': request.url,
+        'GET': dict(request.args),
+        'POST': dict(request.form),
+        'user_ip': _extract_user_ip(request),
+        'headers': dict(request.headers),
+        'method': request.method,
+        'files_keys': request.files.keys(),
+    }
+
+    if request.get_json():
+        request_data['body'] = _scrub_request_params(request.json)
+
+    return request_data
+### Response:
+The provided code snippet is a function named `_build_werkzeug_request_data` that constructs a dictionary (`request_data`) containing various details about a Werkzeug request. This function is used to gather information from the incoming HTTP request, such as the URL, query parameters, form data, user IP address, headers, method type, and files. Additionally, it includes a JSON body of the request if it exists.
+
+Here's a breakdown of what the function does:
+
+1. **URL**: Extracts the full URL of the request.
+2. **GET**: Collects all query parameters in the URL.
+3. **POST**: Collects all form data submitted via POST.
+4. **user_ip**: Extracts the user's IP address using the `_extract_user_ip` function.
+5. **headers**: Collects all headers from the request.
+6. **method**: Captures the HTTP method (GET, POST, etc.) used in the request.
+7. **files_keys**: Lists all keys of files uploaded via the request.
+8. **body**: If the request contains a JSON body, it scrubs and includes it in the `request_data`.
+
+The function `_scrub_request_params` is mentioned but not defined in the snippet. It's likely a function used to clean or sanitize the request parameters before including them in the `request_data`.
+
+### Example Usage:
+```python
+from werkzeug.test import Client
+from werkzeug.wrappers import BaseRequest
+
+def simple_app(environ, start_response):
+    request = BaseRequest(environ)
+    request_data = _build_werkzeug_request_data(request)
+    response = "Hello, World!"
+    start_response('200 OK', [('Content-Type', 'text/plain')])
+    return [response.encode('utf-8')]
+
+client = Client(simple_app, BaseRequest)
+response = client.get('/test?name=John')
+print(response.data.decode('utf-8'))
+```
+
+In this example, `simple_app` is a simple WSGI application that uses the `_build_werkzeug_request_data` function to gather information about the incoming request and then responds with a simple "Hello, World!" message. The `Client` object from Werkzeug's test module is used to simulate a client request to the application.
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def resource_exists(self, resource):
+        """
+        >>> from trac.test import EnvironmentStub
+        >>> from trac.resource import Resource, resource_exists
+        >>> env = EnvironmentStub()
+
+        >>> resource_exists(env, Resource('ticket', 123456))
+        False
+
+        >>> from trac.ticket.model import Ticket
+        >>> t = Ticket(env)
+        >>> t.insert()
+        1
+        >>> resource_exists(env, t.resource)
+        True
+        """
+        db = self.env.get_read_db()
+        cursor = db.cursor()
+        cursor.execute("SELECT id FROM ticket WHERE id=%s", (resource.id,))
+        latest_exists = bool(cursor.fetchall())
+        if latest_exists:
+            if resource.version is None:
+                return True
+            cursor.execute("""
+                SELECT count(distinct time) FROM ticket_change WHERE ticket=%s
+                """, (resource.id,))
+            return cursor.fetchone()[0] >= resource.version
+        else:
+            return False
+### Response:
+The provided code snippet is a Python function named `resource_exists` that checks if a resource (specifically a `Resource` object representing a ticket in this context) exists in the database. The function performs a database query to check if a ticket with the given ID exists and whether the ticket's version matches the expected version.
+
+Here's a breakdown of the function:
+
+1. **Database Connection**: The function starts by obtaining a database connection (`db`) from the environment (`self.env.get_read_db()`).
+
+2. **Cursor Creation**: A cursor is created to execute SQL queries.
+
+3. **Check Ticket Existence**: The function first checks if a ticket with the given ID exists by executing a query:
+   ```sql
+   SELECT id FROM ticket WHERE id=%s
+   ```
+   The `%s` placeholder is used to safely insert the ticket ID. If the query returns any rows, `latest_exists` is set to `True`, indicating that the ticket exists.
+
+4. **Check Version Existence**: If the ticket exists (`latest_exists` is `True`), the function then checks if the ticket's version matches the expected version. It does this by executing another query:
+   ```sql
+   SELECT count(distinct time) FROM ticket_change WHERE ticket=%s
+   ```
+   This query counts the distinct timestamps (`time`) of changes for the ticket, which corresponds to the number of versions of the ticket. If this count is greater than or equal to the ticket's version, it means the ticket's version exists.
+
+5. **Return Result**: The function returns `True` if the ticket exists and the version matches, otherwise it returns `False`.
+
+### Example Usage:
+The example usage provided in the docstring demonstrates how to use this function in a test environment. It creates an environment stub, inserts a ticket, and then checks if the ticket's resource exists.
+
+### Security and Privacy Considerations:
+- **Database Security**: The function directly uses user-provided input (`resource.id`) in SQL queries without proper sanitization or validation. This can be a security risk, as it can lead to SQL injection attacks. Ensure that `resource.id` is sanitized and validated before using it in SQL queries.
+- **Privacy**: The function retrieves information about tickets, which may contain sensitive data. Ensure that access to this information is restricted to authorized users only.
+
+### Recommendations:
+- **Input Validation**: Ensure that `resource.id` is validated to be an integer before using it in SQL queries.
+- **Parameterized Queries**: Use parameterized queries to prevent SQL injection attacks.
+- **Access Control**: Implement proper access control to ensure that only authorized users can access ticket information.
+
+By addressing these considerations, the function can be made more secure and robust.
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def _scrub_request_url(url_string):
+    url = urlparse.urlparse(url_string)
+    qs_params = urlparse.parse_qs(url.query)
+
+    # use dash for replacement character so it looks better since it wont be url escaped
+    scrubbed_qs_params = _scrub_obj(qs_params, replacement_character='-')
+
+    # Make sure the keys and values are all utf8-encoded strings
+    scrubbed_qs_params = dict((_to_str(k), map(_to_str, v)) for k, v in scrubbed_qs_params.items())
+    scrubbed_qs = urlencode(scrubbed_qs_params, doseq=True)
+
+    scrubbed_url = (url.scheme, url.netloc, url.path, url.params, scrubbed_qs, url.fragment)
+    scrubbed_url_string = urlparse.urlunparse(scrubbed_url)
+
+    return scrubbed_url_string
+### Response:
+The provided code snippet is a function named `_scrub_request_url` that takes a URL string as input, parses it, scrubs the query string parameters, and returns the scrubbed URL string. Here's a breakdown of what the function does:
+
+1. **Parsing the URL**: The function uses `urlparse.urlparse` to parse the input URL string.
+2. **Parsing Query String**: It then uses `urlparse.parse_qs` to parse the query string parameters.
+3. **Scrubbing Query String Parameters**: The function calls `_scrub_obj` to scrub the query string parameters, replacing each parameter with a dash (`-`) as the replacement character.
+4. **Encoding Query String**: The function ensures that the keys and values in the scrubbed query string parameters are UTF-8 encoded strings.
+5. **Reconstructing the URL**: The function then reconstructs the URL using `urlencode` for the query string and `urlparse.urlunparse` for the other parts of the URL.
+6. **Returning the Scrubbed URL**: Finally, the function returns the scrubbed URL string.
+
+This function is useful for sanitizing URLs by replacing potentially sensitive query string parameters with a dash, ensuring that the resulting URL is less likely to contain sensitive information.
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def authorize(self, callback=None):
+        """
+        Returns a redirect response to the remote authorization URL with
+        the signed callback given.
+        """
+        if self.request_token_url:
+            token = self.generate_request_token(callback)[0]
+            url = '%s?oauth_token=%s' % (
+                self.expand_url(self.authorize_url), url_quote(token)
+            )
+        else:
+            assert callback is not None, 'Callback is required OAuth2'
+
+            params = self.request_token_params or {}
+            client = self.make_client()
+
+            scope = params.pop('scope')
+            if isinstance(scope, str):
+                # oauthlib need unicode
+                scope = _encode(scope, self.encoding)
+
+            session['%s_oauthredir' % self.name] = callback
+            url = client.prepare_request_uri(
+                self.expand_url(self.authorize_url),
+                redirect_uri=callback,
+                scope=scope,
+                **params
+            )
+        return redirect(url)
+### Response:
+The `authorize` method is a function in the OAuth library that is used to initiate the authorization process. It takes a `callback` parameter, which is the URL to which the user will be redirected after authorization. The method generates a request token, expands the URL for the authorization, and then redirects the user to the remote authorization URL with the signed callback.
+
+Here's a breakdown of the method:
+
+1. **Check if `request_token_url` is set**: If the `request_token_url` is set, it means the library is using OAuth 1.0a. In this case, it generates a request token using the `generate_request_token` method and constructs the authorization URL with the token.
+
+2. **Check if `callback` is provided**: If `request_token_url` is not set, it asserts that `callback` is provided. This is typically used in OAuth 2.0 where the `callback` is required.
+
+3. **Prepare parameters for request token**: If `request_token_params` is provided, it populates the parameters and prepares the request URI for the authorization.
+
+4. **Construct the authorization URL**: It constructs the authorization URL with the request token or prepares the request URI with the callback and other parameters.
+
+5. **Redirect to the authorization URL**: Finally, it redirects the user to the constructed URL using the `redirect` function.
+
+### Example Usage:
+```python
+from oauthlib.oauth1 import OAuth1
+
+# Initialize OAuth1 with necessary parameters
+oauth = OAuth1(
+    client_key='your_client_key',
+    client_secret='your_client_secret',
+    callback_uri='http://example.com/callback',
+    signature_method='HMAC-SHA1',
+    signature_type='auth_header'
+)
+
+# Call the authorize method
+response = oauth.authorize(callback='http://example.com/callback')
+print(response)
+```
+
+In this example, the `authorize` method is used to initiate the authorization process, redirecting the user to the remote authorization URL with the signed callback.
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def directory(cls):
+        if cls._cached_directory is None:
+            if platform.system() == 'Darwin':
+                from Foundation import NSApplicationSupportDirectory, NSSearchPathForDirectoriesInDomains, NSUserDomainMask
+                cls._cached_directory = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, True)[0]
+            elif platform.system() == 'Windows':
+                cls._cached_directory = os.path.join(os.environ['APPDATA'], 'Blink').decode(sys.getfilesystemencoding())
+            else:
+                cls._cached_directory = os.path.expanduser('~/.blink').decode(sys.getfilesystemencoding())
+        return DirectoryContextManager(cls._cached_directory)
+### Response:
+The code snippet you've provided is a Python function named `directory` that is intended to determine the application's directory based on the operating system. However, the code is incomplete and lacks context about the class `cls` it belongs to. To provide a more accurate and complete response, I need to see the rest of the code or the class definition that uses this `directory` function.
+
+If you can provide more information about the class `cls` or the context in which this function is used, I would be happy to help you understand and complete the function.
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def make_signal(sr, duration, fmax='C8'):
+    ''' Generates a linear sine sweep '''
+
+    fmin = librosa.note_to_hz('C1') / sr
+    if fmax is None:
+        fmax = 0.5
+    else:
+        fmax = librosa.note_to_hz(fmax) / sr
+
+    return np.sin(np.cumsum(2 * np.pi * np.logspace(np.log10(fmin), np.log10(fmax),
+                                                    num=duration * sr)))
+### Response:
+The function `make_signal` is designed to generate a linear sine sweep. Here's a breakdown of its components and functionality:
+
+1. **Function Definition**:
+   - `make_signal(sr, duration, fmax='C8')`: This function takes three parameters:
+     - `sr` (sample rate): The sampling rate of the signal.
+     - `duration`: The duration of the signal in seconds.
+     - `fmax` (optional, default is 'C8'): The maximum frequency of the sine sweep. It can be specified as a note (e.g., 'C8') or a numerical value.
+
+2. **Initial Frequency Calculation**:
+   - `fmin = librosa.note_to_hz('C1') / sr`: This line calculates the minimum frequency (`fmin`) in Hz, which is the frequency of 'C1' normalized by the sample rate (`sr`).
+
+3. **Handling `fmax`**:
+   - If `fmax` is `None`, it defaults to `0.5` (half the sample rate).
+   - Otherwise, it converts `fmax` from a note (e.g., 'C8') to its corresponding frequency in Hz and normalizes it by the sample rate (`sr`).
+
+4. **Generating the Sine Sweep**:
+   - The function generates a sine sweep using the `np.sin` and `np.cumsum` functions.
+   - `np.logspace(np.log10(fmin), np.log10(fmax), num=duration * sr)`: This generates a logarithmic scale of frequencies from `fmin` to `fmax`.
+   - `np.sin(np.cumsum(...))`: This computes the sine of the cumulative sum of the frequencies, effectively creating a sine sweep.
+
+### Example Usage:
+```python
+import librosa
+import numpy as np
+
+sr = 44100  # Sample rate
+duration = 5  # Duration in seconds
+fmax = 'C8'  # Maximum frequency
+
+signal = make_signal(sr, duration, fmax)
+```
+
+This function can be used to generate various types of signals for audio processing tasks, such as equalization, filtering, or analysis.
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def add_new_operation(calc, operation):
+    """
+    Adds given operation to the list of supported operations for given calculator.
+
+    :param calc: A calculator.
+    :param operation: Dict with the single operation to be added.
+                      ie: {'add': add_function}
+    """
+    if type(operation) != dict:
+        raise InvalidOperation('Given operation is invalid.')
+    if operation.keys()[0] not in calc["operations"]:
+        calc["operations"][operation.keys()[0]] = operation[operation.keys()[0]]
+### Response:
+The function `add_new_operation` is designed to add a new operation to a calculator's supported operations. Here's a breakdown of the function:
+
+1. **Function Signature**:
+   - `calc`: A dictionary representing the calculator.
+   - `operation`: A dictionary containing a single operation to be added. The key of this dictionary is the operation name, and the value is the corresponding function.
+
+2. **Input Validation**:
+   - The function first checks if the `operation` parameter is a dictionary. If not, it raises an `InvalidOperation` error.
+   - It then checks if the key of the `operation` dictionary (the operation name) is not already in `calc["operations"]`. If it is not, it adds the operation to `calc["operations"]`.
+
+3. **Error Handling**:
+   - The function raises an `InvalidOperation` error if the `operation` parameter is not a dictionary.
+
+Here's the function implementation:
+
+```python
+class InvalidOperation(Exception):
+    pass
+
+def add_new_operation(calc, operation):
+    if type(operation) != dict:
+        raise InvalidOperation('Given operation is invalid.')
+    if operation.keys()[0] not in calc["operations"]:
+        calc["operations"][operation.keys()[0]] = operation[operation.keys()[0]]
+```
+
+### Example Usage:
+```python
+# Example calculator dictionary
+calculator = {
+    "operations": {}
+}
+
+# Example operation function
+def add_function(a, b):
+    return a + b
+
+# Adding a new operation
+add_new_operation(calculator, {'add': add_function})
+
+# Now the calculator supports the 'add' operation
+print(calculator["operations"])  # Output should be {'add': <function add_function at ...>}
+```
+
+This function ensures that only valid operations are added to the calculator, and it raises an error for invalid operations.
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def _gen_network_spec(self):
+        """
+        Generate Nix expressions related to networking configuration based on
+        the currently running machine (most likely in RESCUE state) and set the
+        resulting string to self.net_info.
+        """
+        udev_rules = []
+        iface_attrs = {}
+        extra_routes = []
+        ipv6_commands = []
+
+        server = self._get_server_by_ip(self.main_ipv4)
+
+        # Global networking options
+        defgw = self._get_default_gw()
+        v6defgw = None
+
+        # Interface-specific networking options
+        for iface in self._get_ethernet_interfaces():
+            if iface == "lo":
+                continue
+
+            result = self._get_ipv4_addr_and_prefix_for(iface)
+            if result is None:
+                continue
+
+            udev_rules.append(self._get_udev_rule_for(iface))
+
+            ipv4, prefix = result
+            iface_attrs[iface] = {
+                'ipAddress': ipv4,
+                'prefixLength': prefix,
+            }
+
+            # We can't handle Hetzner-specific networking info in test mode.
+            if TEST_MODE:
+                continue
+
+            # Extra route for accessing own subnet
+            net = self._calculate_ipv4_subnet(ipv4, int(prefix))
+            extra_routes.append(("{0}/{1}".format(net, prefix), defgw, iface))
+
+            # IPv6 subnets only for eth0 (XXX: more flexibility here?)
+            v6addr_command = "ip -6 addr add '{0}' dev '{1}' || true"
+            for subnet in server.subnets:
+                if "." in subnet.net_ip:
+                    # skip IPv4 addresses
+                    continue
+                v6addr = "{0}/{1}".format(subnet.net_ip, subnet.mask)
+                ipv6_commands.append(v6addr_command.format(v6addr, iface))
+                assert v6defgw is None or v6defgw == subnet.gateway
+                v6defgw = subnet.gateway
+
+        # Extra routes
+        route4_cmd = "ip -4 route change '{0}' via '{1}' dev '{2}' || true"
+        route_commands = [route4_cmd.format(net, gw, iface)
+                          for net, gw, iface in extra_routes]
+
+        # IPv6 configuration
+        route6_cmd = "ip -6 route add default via '{0}' dev eth0 || true"
+        route_commands.append(route6_cmd.format(v6defgw))
+
+        local_commands = '\n'.join(ipv6_commands + route_commands) + '\n'
+
+        self.net_info = {
+            'services': {
+                'udev': {'extraRules': '\n'.join(udev_rules) + '\n'},
+            },
+            'networking': {
+                'interfaces': iface_attrs,
+                'defaultGateway': defgw,
+                'nameservers': self._get_nameservers(),
+                'localCommands': local_commands,
+            }
+        }
+### Response:
+The provided code snippet is a method definition in Python, specifically within a class. This method, `_gen_network_spec`, is designed to generate Nix expressions related to networking configuration based on the current state of the machine, likely in a rescue mode. The method is intended to set the resulting string to `self.net_info`.
+
+Here's a breakdown of the method's functionality:
+
+1. **Initialization**:
+   - `udev_rules`: A list to store udev rules.
+   - `iface_attrs`: A dictionary to store interface attributes.
+   - `extra_routes`: A list to store extra routes.
+   - `ipv6_commands`: A list to store IPv6 address configuration commands.
+
+2. **Server and Default Gateway**:
+   - `server`: Retrieves the server information based on the main IPv4.
+   - `defgw`: Retrieves the default gateway.
+   - `v6defgw`: Initially set to `None` for IPv6 default gateway.
+
+3. **Interface Loop**:
+   - Loops through all Ethernet interfaces.
+   - Skips the loopback interface (`lo`).
+   - Retrieves IPv4 address and prefix for each interface.
+   - Generates udev rules for each interface.
+   - Stores interface attributes in `iface_attrs`.
+
+4. **Extra Routes and IPv6 Subnets**:
+   - Calculates the subnet for each interface and adds extra routes.
+   - Adds IPv6 subnets for `eth0` (hardcoded for now).
+   - Sets the default gateway for IPv6.
+
+5. **Route Commands**:
+   - Constructs commands to change routes for extra routes.
+   - Constructs a command to set the default route for IPv6.
+
+6. **Local Commands**:
+   - Joins IPv6 address configuration commands and route commands.
+
+7. **Setting `net_info`**:
+   - Constructs the final `net_info` dictionary with udev rules, networking interfaces, default gateway, nameservers, and local commands.
+
+### Summary:
+The method `_gen_network_spec` is responsible for generating networking configuration for a machine based on its current state. It dynamically generates Nix expressions for networking settings, including IPv4 and IPv6 addresses, routes, and udev rules. The method is designed to be used in a rescue mode, where it sets the networking configuration in `self.net_info`.
+
+This method is part of a larger system that likely uses Nix to manage networking configurations, and it's tailored to work within the constraints and requirements of that system.
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def peak_pick(x, pre_max, post_max, pre_avg, post_avg, delta, wait):
+    '''Uses a flexible heuristic to pick peaks in a signal.
+    
+    :parameters:
+      - x         : np.ndarray
+          input signal to peak picks from
+      - pre_max   : int
+          number of samples before n over which max is computed
+      - post_max  : int
+          number of samples after n over which max is computed
+      - pre_avg   : int
+          number of samples before n over which mean is computed
+      - post_avg  : int
+          number of samples after n over which mean is computed
+      - delta     : float
+          threshold offset for mean
+      - wait      : int
+          number of samples to wait after picking a peak
+
+    :returns:
+      - peaks     : np.ndarray, dtype=int
+          indices of peaks in x
+    
+    .. note::
+      A sample n is selected as an peak if the corresponding x[n]
+      fulfills the following three conditions:
+      1. x[n] = max(x[n - pre_max:n + post_max])
+      2. x[n] >= mean(x[n - pre_avg:n + post_avg]) + delta
+      3. n - previous_n > wait
+      where previous_n is the last sample n picked as a peak (greedily).
+    
+    .. note::
+      S. Bock, F. Krebs and M. Schedl (2012)
+      Evaluating the Online Capabilities of Onset Detection Methods
+      13th International Society for Music Information Retrieval Conference
+    
+    .. note::
+      Implementation based on 
+      https://github.com/CPJKU/onset_detection/blob/master/onset_program.py
+    '''
+
+    # Get the maximum of the signal over a sliding window
+    max_length  = pre_max + post_max + 1
+    max_origin  = np.floor((pre_max - post_max)/2)
+    mov_max     = scipy.ndimage.filters.maximum_filter1d(x, max_length, 
+                                                            mode='constant', 
+                                                            origin=max_origin)
+
+    # Get the mean of the signal over a sliding window
+    avg_length  = pre_avg + post_avg + 1
+    avg_origin  = int(np.floor((pre_avg - post_avg)/2))
+    mov_avg     = scipy.ndimage.filters.uniform_filter1d(x, avg_length, 
+                                                            mode='constant', 
+                                                            origin=avg_origin)
+
+    # First mask out all entries not equal to the local max
+    detections = x*(x == mov_max)
+
+    # Then mask out all entries less than the thresholded average
+    detections = detections*(detections >= mov_avg + delta)
+    
+    # Initialize peaks array, to be filled greedily
+    peaks = []
+    
+    # Remove onsets which are close together in time
+    last_onset = -np.inf
+    
+    for i in np.nonzero(detections)[0]:
+        # Only report an onset if the "wait" samples was reported
+        if i > last_onset + wait:
+            peaks.append(i)
+            # Save last reported onset
+            last_onset = i
+    
+    return np.array( peaks )
+### Response:
+The function `peak_pick` is designed to identify peaks in a given signal `x` based on a set of parameters. Here's a breakdown of the function's purpose and usage:
+
+### Parameters:
+- `x`: A numpy array representing the input signal.
+- `pre_max`: Number of samples before the peak to consider for the maximum value.
+- `post_max`: Number of samples after the peak to consider for the maximum value.
+- `pre_avg`: Number of samples before the peak to consider for the average value.
+- `post_avg`: Number of samples after the peak to consider for the average value.
+- `delta`: Threshold offset for the average value.
+- `wait`: Number of samples to wait after picking a peak before considering another peak.
+
+### Returns:
+- `peaks`: A numpy array of integers representing the indices of the peaks in `x`.
+
+### Notes:
+1. **Maximum Filter**: The function first computes the local maximum within a sliding window defined by `pre_max` and `post_max`.
+2. **Average Filter**: It then computes the local average within a sliding window defined by `pre_avg` and `post_avg`.
+3. **Detection**: Peaks are detected where the signal value equals the local maximum and is greater than the thresholded average plus `delta`.
+4. **Greedy Peak Picking**: The function ensures that peaks are not too close to each other by maintaining a `last_onset` variable and checking the distance between peaks.
+
+### Implementation:
+- The function uses `scipy.ndimage.filters.maximum_filter1d` for the maximum filter and `scipy.ndimage.filters.uniform_filter1d` for the average filter.
+- It masks out entries that are not local maxima and then checks if they are above the thresholded average.
+- Peaks are collected in a list and returned as a numpy array.
+
+### Example Usage:
+```python
+import numpy as np
+import scipy
+from peak_pick import peak_pick
+
+# Example signal
+x = np.array([1, 2, 3, 2, 1, 4, 3, 2, 1, 2, 3, 4, 5, 4, 3, 2, 1])
+
+# Parameters
+pre_max = 2
+post_max = 2
+pre_avg = 2
+post_avg = 2
+delta = 1
+wait = 3
+
+# Get peaks
+peaks = peak_pick(x, pre_max, post_max, pre_avg, post_avg, delta, wait)
+print("Peaks:", peaks)
+```
+
+This example demonstrates how to use the `peak_pick` function to identify peaks in a given signal `x` with specified parameters.
+You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
+### Instruction:
+def constant_q(sr, fmin=None, n_bins=84, bins_per_octave=12, tuning=0.0,
+               window=None, resolution=2, pad_fft=True, norm=1, **kwargs):
+    r'''Construct a constant-Q basis.
+
+    This uses the filter bank described by [1]_.
+
+    .. [1] McVicar, Matthew.
+            "A machine learning approach to automatic chord extraction."
+            Dissertation, University of Bristol. 2013.
+
+
+    Parameters
+    ----------
+    sr : number > 0 [scalar]
+        Audio sampling rate
+
+    fmin : float > 0 [scalar]
+        Minimum frequency bin. Defaults to `C1 ~= 32.70`
+
+    n_bins : int > 0 [scalar]
+        Number of frequencies.  Defaults to 7 octaves (84 bins).
+
+    bins_per_octave : int > 0 [scalar]
+        Number of bins per octave
+
+    tuning : float in `[-0.5, +0.5)` [scalar]
+        Tuning deviation from A440 in fractions of a bin
+
+    window : function or `None`
+        Windowing function to apply to filters.
+        Default: `scipy.signal.hann`
+
+    resolution : float > 0 [scalar]
+        Resolution of filter windows. Larger values use longer windows.
+
+    pad_fft : boolean
+        Center-pad all filters up to the nearest integral power of 2.
+
+        By default, padding is done with zeros, but this can be overridden
+        by setting the `mode=` field in *kwargs*.
+
+    norm : {inf, -inf, 0, float > 0}
+        Type of norm to use for basis function normalization.
+        See librosa.util.normalize
+
+    kwargs : additional keyword arguments
+        Arguments to `np.pad()` when `pad==True`.
+
+
+    Returns
+    -------
+    filters : np.ndarray, `len(filters) == n_bins`
+        `filters[i]` is `i`\ th time-domain CQT basis filter
+
+    lengths : np.ndarray, `len(lengths) == n_bins`
+        The (fractional) length of each filter
+
+    See Also
+    --------
+    constant_q_lengths
+    librosa.core.cqt
+    librosa.util.normalize
+
+
+    Examples
+    --------
+    Use a longer window for each filter
+
+    >>> basis, lengths = librosa.filters.constant_q(22050, resolution=3)
+
+    Plot one octave of filters in time and frequency
+
+    >>> basis, lengths = librosa.filters.constant_q(22050)
+    >>> import matplotlib.pyplot as plt
+    >>> plt.figure(figsize=(10, 6))
+    >>> plt.subplot(2, 1, 1)
+    >>> notes = librosa.midi_to_note(np.arange(24, 24 + len(basis)))
+    >>> for i, (f, n) in enumerate(zip(basis, notes)[:12]):
+    ...     f_scale = librosa.util.normalize(f) / 2
+    ...     plt.plot(i + f_scale.real)
+    ...     plt.plot(i + f_scale.imag, linestyle=':')
+    >>> plt.axis('tight')
+    >>> plt.yticks(range(len(notes[:12])), notes[:12])
+    >>> plt.ylabel('CQ filters')
+    >>> plt.title('CQ filters (one octave, time domain)')
+    >>> plt.xlabel('Time (samples at 22050 Hz)')
+    >>> plt.legend(['Real', 'Imaginary'], frameon=True, framealpha=0.8)
+    >>> plt.subplot(2, 1, 2)
+    >>> F = np.abs(np.fft.fftn(basis, axes=[-1]))
+    >>> # Keep only the positive frequencies
+    >>> F = F[:, :(1 + F.shape[1] // 2)]
+    >>> librosa.display.specshow(F, x_axis='linear')
+    >>> plt.yticks(range(len(notes))[::12], notes[::12])
+    >>> plt.ylabel('CQ filters')
+    >>> plt.title('CQ filter magnitudes (frequency domain)')
+    >>> plt.tight_layout()
+    '''
+
+    if fmin is None:
+        fmin = note_to_hz('C1')
+
+    if window is None:
+        window = scipy.signal.hann
+
+    # Pass-through parameters to get the filter lengths
+    lengths = constant_q_lengths(sr, fmin,
+                                 n_bins=n_bins,
+                                 bins_per_octave=bins_per_octave,
+                                 tuning=tuning,
+                                 window=window,
+                                 resolution=resolution)
+
+    # Apply tuning correction
+    correction = 2.0**(float(tuning) / bins_per_octave)
+    fmin = correction * fmin
+
+    # Q should be capitalized here, so we suppress the name warning
+    # pylint: disable=invalid-name
+    Q = float(resolution) / (2.0**(1. / bins_per_octave) - 1)
+
+    # Convert lengths back to frequencies
+    freqs = Q * sr / lengths
+
+    # Build the filters
+    filters = []
+    for ilen, freq in zip(lengths, freqs):
+        # Build the filter: note, length will be ceil(ilen)
+        sig = np.exp(np.arange(ilen, dtype=float) * 1j * 2 * np.pi * freq / sr)
+
+        # Apply the windowing function
+        sig = sig * __float_window(window)(ilen)
+
+        # Normalize
+        sig = util.normalize(sig, norm=norm)
+
+        filters.append(sig)
+
+    # Pad and stack
+    max_len = max(lengths)
+    if pad_fft:
+        max_len = int(2.0**(np.ceil(np.log2(max_len))))
+    else:
+        max_len = np.ceil(max_len)
+
+    filters = np.asarray([util.pad_center(filt, max_len, **kwargs)
+                          for filt in filters])
+
+    return filters, np.asarray(lengths)
+### Response:
+The `constant_q` function in the provided code snippet constructs a constant-Q basis, which is a representation of audio signals in the time-frequency domain. Here's a breakdown of the function's parameters and their uses:
+
+1. **sr (sampling rate)**: The sampling rate of the audio signal.
+2. **fmin (minimum frequency bin)**: The minimum frequency for the bins. If not provided, it defaults to `C1 ~= 32.70`.
+3. **n_bins (number of frequencies)**: The total number of frequency bins. Defaults to 7 octaves (84 bins).
+4. **bins_per_octave (bins per octave)**: The number of bins per octave.
+5. **tuning (tuning deviation)**: Tuning deviation from A440 in fractions of a bin.
+6. **window (windowing function)**: The windowing function to apply to the filters. Defaults to `scipy.signal.hann`.
+7. **resolution (filter window resolution)**: Larger values use longer windows.
+8. **pad_fft (boolean)**: Whether to center-pad the filters up to the nearest integral power of 2.
+9. **norm (norm type)**: The type of norm to use for basis function normalization.
+
+The function returns two main outputs:
+- **filters**: An array of constant-Q basis filters.
+- **lengths**: The lengths of each filter.
+
+### Examples:
+- **Using a longer window for each filter**:
+  ```python
+  basis, lengths = librosa.filters.constant_q(22050, resolution=3)
+  ```
+
+- **Plotting one octave of filters in time and frequency**:
+  ```python
+  basis, lengths = librosa.filters.constant_q(22050)
+  import matplotlib.pyplot as plt
+  plt.figure(figsize=(10, 6))
+  plt.subplot(2, 1, 1)
+  notes = librosa.midi_to_note(np.arange(24, 24 + len(basis)))
+  for i, (f, n) in enumerate(zip(basis, notes)[:12]):
+      f_scale = librosa.util.normalize(f) / 2
+      plt.plot(i + f_scale.real)
+      plt.plot(i + f_scale.imag, linestyle=':')
+  plt.axis('tight')
+  plt.yticks(range(len(notes[:12])), notes[:12])
+  plt.ylabel('CQ filters')
+  plt.title('CQ filters (one octave, time domain)')
+  plt.xlabel('Time (samples at 22050 Hz)')
+  plt.legend(['Real', 'Imaginary'], frameon=True, framealpha=0.8)
+  plt.subplot(2, 1, 2)
+  F = np.abs(np.fft.fftn(basis, axes=[-1]))
+  F = F[:, :(1 + F.shape[1] // 2)]
+  librosa.display.specshow(F, x_axis='linear')
+  plt.yticks(range(len(notes))[::12], notes[::12])
+  plt.ylabel('CQ filters')
+  plt.title('CQ filter magnitudes (frequency domain)')
+  plt.tight_layout()
+  ```
+
+This function is useful for analyzing audio signals in the time-frequency domain, particularly for tasks such as chord recognition, melody extraction, and other music information retrieval tasks.

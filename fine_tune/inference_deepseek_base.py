@@ -17,6 +17,7 @@ TESTING_DATASET = pathlib.Path("datasets/ctssb_testing.jsonl")
 OUTPUT_FILE = pathlib.Path("datasets/ctssb_testing_base_output.jsonl")
 
 max_new_tokens = 2048 + 100  # based on model_max_length used during fine tuning
+device = "cuda:2"
 
 
 def load_dataset_file(path: pathlib.Path) -> list:
@@ -54,11 +55,11 @@ def main():
         quantization_config=quantization_config,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
-        device_map="cuda",
+        device_map="auto",
     )
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_PATH, trust_remote_code=True, padding_side="left")
 
-    inputs = tokenizer(prompts, return_tensor="pt", padding=True, truncation=True)
+    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
     outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
     decoded_outputs = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
 
