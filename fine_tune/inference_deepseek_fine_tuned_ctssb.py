@@ -53,13 +53,13 @@ fix the single statement bug in this python method
 
 def main():
     testing_dataset = load_dataset_file(TESTING_DATASET)
-    testing_dataset = testing_dataset[::10]
+    testing_dataset = testing_dataset[::20]
     prompts = [build_instruction_prompt(entry["input"]) for entry in testing_dataset]
 
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
+        bnb_4bit_use_double_quant=False,
         bnb_4bit_quant_type="nf4",
     )
 
@@ -68,7 +68,7 @@ def main():
         quantization_config=quantization_config,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
-        device_map="cuda:2",
+        device_map="auto",
         attn_implementation="flash_attention_2",
     )
     model = PeftModel.from_pretrained(model, ADAPTER_PATH)
@@ -77,7 +77,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_PATH, trust_remote_code=True, padding_side="left")
 
-    batch_size = 5
+    batch_size = 15
     decoded_outputs = []
 
     def save_on_interrupt(signal_received, frame):
