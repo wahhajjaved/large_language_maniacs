@@ -1,14 +1,13 @@
 import json
 import os
 import pathlib
+import signal
 import sys
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
-# import evaluate
-# import Levenshtein
 import torch
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -16,7 +15,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 BASE_MODEL_PATH = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
 ADAPTER_PATH = "models/DeepSeek-Coder-V2-Lite-Instruct-finetuned-ctssb/checkpoint-3366/adapter_model"
 TESTING_DATASET = pathlib.Path("datasets/ctssb_testing.jsonl")
-OUTPUT_FILE = pathlib.Path("datasets/ctssb_testing_base_output.jsonl")
+OUTPUT_FILE = pathlib.Path("datasets/ctssb_testing_finetuned_output.jsonl")
+OUTPUT_FILE_ERROR = pathlib.Path("datasets/ctssb_testing_finetuned_output_error.jsonl")
 
 max_new_tokens = 2048 + 100  # based on model_max_length used during fine tuning
 
@@ -29,10 +29,21 @@ def load_dataset_file(path: pathlib.Path) -> list:
     return dataset
 
 
+def save_dataset(data: list[dict], save_location):
+    lines = []
+    for entry in data:
+        lines.append(json.dumps(entry))
+
+    with open(save_location, "w") as f:
+        for line in lines:
+            f.write(line + "\n")
+
+
 def build_instruction_prompt(instruction: str):
     return """
 You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
 ### Instruction:
+fix the single statement bug in this python method
 {}
 ### Response:
 """.format(
@@ -42,7 +53,8 @@ You are an AI assistant, developed by DeepSeek Company. For politically sensitiv
 
 def main():
     testing_dataset = load_dataset_file(TESTING_DATASET)
-    prompts = [build_instruction_prompt(entry["input"]) for entry in testing_dataset[:10]]
+    testing_dataset = testing_dataset[::10]
+    prompts = [build_instruction_prompt(entry["input"]) for entry in testing_dataset[:15]]
 
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -56,19 +68,40 @@ def main():
         quantization_config=quantization_config,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
-        device_map="auto",
+        device_map="cuda:2",
+        attn_implementation="flash_attention_2",
     )
     model = PeftModel.from_pretrained(model, ADAPTER_PATH)
-
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_PATH, trust_remote_code=True, padding_side="left")
 
-    inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
-    outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
-    decoded_outputs = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+    batch_size = 5
+    decoded_outputs = []
 
-    with open(OUTPUT_FILE, "w") as f:
-        for output in decoded_outputs:
-            f.write(output + "\n")
+    def save_on_interrupt(signal_received, frame):
+        for entry, output in zip(testing_dataset, decoded_outputs):
+            entry["generated_output"] = output
+        save_dataset(testing_dataset, OUTPUT_FILE_ERROR)
+        print("\nInterrupted! Partial results saved.")
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, save_on_interrupt)
+    try:
+        with torch.inference_mode():
+            for i in range(0, len(prompts), batch_size):
+                print(f"Running batch {i} on finetuned model")
+                batch = prompts[i : i + batch_size]
+                inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True)
+                inputs = {k: v.to(model.device) for k, v in inputs.items()}
+                outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
+                decoded_outputs.extend(tokenizer.decode(output, skip_special_tokens=True) for output in outputs)
+
+        for entry, output in zip(testing_dataset, decoded_outputs):
+            entry["generated_output"] = output
+        save_dataset(testing_dataset, OUTPUT_FILE)
+
+    except Exception as e:
+        save_dataset(testing_dataset, OUTPUT_FILE_ERROR)
+        print(e)
 
 
 if __name__ == "__main__":

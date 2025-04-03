@@ -42,6 +42,7 @@ def build_instruction_prompt(instruction: str):
     return """
 You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
 ### Instruction:
+fix the single statement bug in this python method
 {}
 ### Response:
 """.format(
