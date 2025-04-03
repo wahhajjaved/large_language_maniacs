@@ -71,6 +71,7 @@ def main():
         attn_implementation="flash_attention_2",
     )
     model.generation_config.cache_implementation = "static"
+    model.config.use_cache = True
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_PATH, trust_remote_code=True, padding_side="left")
 
     batch_size = 5
@@ -90,9 +91,15 @@ def main():
             for i in range(0, len(prompts), batch_size):
                 print(f"Running batch {i}")
                 batch = prompts[i : i + batch_size]
-                inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True).to(model.device)
-                outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
-                decoded_outputs.extend(tokenizer.decode(output, skip_special_tokens=True) for output in outputs)
+                try:
+                    inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True)
+                    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+                    outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
+                    decoded_outputs.extend(tokenizer.decode(output, skip_special_tokens=True) for output in outputs)
+                except torch.cuda.OutOfMemoryError:
+                    torch.cuda.empty_cache()
+                    print("OOM on batch, inserting empty outputs.")
+                    decoded_outputs.extend(["" for _ in batch])
 
         for entry, output in zip(testing_dataset, decoded_outputs):
             entry["generated_output"] = output
