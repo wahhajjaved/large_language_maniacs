@@ -100,6 +100,8 @@ def main():
         save_dataset(testing_dataset, OUTPUT_FILE)
 
     except Exception as e:
+        for entry, output in zip(testing_dataset, decoded_outputs):
+            entry["generated_output"] = output
         save_dataset(testing_dataset, OUTPUT_FILE_ERROR)
         print(e)
 

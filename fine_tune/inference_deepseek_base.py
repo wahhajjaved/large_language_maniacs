@@ -52,7 +52,7 @@ fix the single statement bug in this python method
 
 def main():
     testing_dataset = load_dataset_file(TESTING_DATASET)
-    testing_dataset = testing_dataset[::10]
+    testing_dataset = testing_dataset[::20]
     prompts = [build_instruction_prompt(entry["input"]) for entry in testing_dataset]
 
     quantization_config = BitsAndBytesConfig(
@@ -99,6 +99,8 @@ def main():
         save_dataset(testing_dataset, OUTPUT_FILE)
 
     except Exception as e:
+        for entry, output in zip(testing_dataset, decoded_outputs):
+            entry["generated_output"] = output
         save_dataset(testing_dataset, OUTPUT_FILE_ERROR)
         print(e)
 
