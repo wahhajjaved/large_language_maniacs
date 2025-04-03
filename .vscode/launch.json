@@ -57,6 +57,14 @@
             "module": "fine_tune.inference_deepseek_fine_tuned_ctssb",
             "console": "integratedTerminal",
             "justMyCode":false
+        },
+        {
+            "name": "analysis",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.analysis",
+            "console": "integratedTerminal",
+            "justMyCode":false
         }
 
     ]
