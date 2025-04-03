@@ -1,9 +1,10 @@
 #/bin/bash
 export TRITON_CACHE_DIR="../models/"
 export CUDA_VISIBLE_DEVICES=1,2
-DATA_PATH="../datasets/ctssb_testing.jsonl"
+DATA_PATH="../datasets/ctssb_training.jsonl"
 OUTPUT_PATH="../models/DeepSeek-Coder-V2-Lite-Instruct-finetuned-ctssb"
 MODEL_PATH="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+LOGFILE="train_$(date +%Y%m%d_%H%M%S).log"
 
 cd fine_tune
 deepspeed finetune_deepseek.py \
@@ -18,7 +19,7 @@ deepspeed finetune_deepseek.py \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --save_steps 100 \
-    --save_total_limit 100 \
+    --save_total_limit 3 \
     --learning_rate 2e-5 \
     --warmup_steps 10 \
     --logging_steps 1 \
@@ -34,3 +35,4 @@ deepspeed finetune_deepseek.py \
     --lora_r 64 \
     --lora_alpha 16 \
     --quant_type nf4 \
+> "$LOGFILE" 2>&1
