@@ -54,7 +54,7 @@ fix the single statement bug in this python method
 def main():
     testing_dataset = load_dataset_file(TESTING_DATASET)
     testing_dataset = testing_dataset[::10]
-    prompts = [build_instruction_prompt(entry["input"]) for entry in testing_dataset[:15]]
+    prompts = [build_instruction_prompt(entry["input"]) for entry in testing_dataset]
 
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
