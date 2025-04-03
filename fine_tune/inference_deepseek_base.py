@@ -28,6 +28,17 @@ def load_dataset_file(path: pathlib.Path) -> list:
     return dataset
 
 
+def save_dataset(data: list[list[dict]], save_location):
+    lines = []
+    for l in data:
+        for entry in l:
+            lines.append(json.dumps(entry))
+
+    with open(save_location, "w") as f:
+        for line in lines:
+            f.write(line + "\n")
+
+
 def build_instruction_prompt(instruction: str):
     return """
 You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
@@ -63,9 +74,9 @@ def main():
     outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
     decoded_outputs = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
 
-    with open(OUTPUT_FILE, "w") as f:
-        for output in decoded_outputs:
-            f.write(output + "\n")
+    for entry, output in zip(testing_dataset, decoded_outputs):
+        entry["generated_output"] = output
+    save_dataset(testing_dataset, OUTPUT_FILE)
 
 
 # def main2():
