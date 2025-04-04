@@ -16,6 +16,7 @@ BASE_MODEL_PATH = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
 ADAPTER_PATH = "models/DeepSeek-Coder-V2-Lite-Instruct-finetuned-ctssb/checkpoint-3366/adapter_model"
 TESTING_DATASET = pathlib.Path("datasets/ctssb_testing.jsonl")
 OUTPUT_FILE = pathlib.Path("datasets/ctssb_testing_finetuned_output.jsonl")
+OUTPUT_FILE_INCREMENTAL = pathlib.Path("datasets/ctssb_testing_finetuned_output_incremental.jsonl")
 OUTPUT_FILE_ERROR = pathlib.Path("datasets/ctssb_testing_finetuned_output_error.jsonl")
 
 max_new_tokens = 2048 + 100  # based on model_max_length used during fine tuning
@@ -39,6 +40,16 @@ def save_dataset(data: list[dict], save_location):
             f.write(line + "\n")
 
 
+def save_dataset_incremently(data: list[dict], save_location):
+    lines = []
+    for entry in data:
+        lines.append(json.dumps(entry))
+
+    with open(save_location, "a") as f:
+        for line in lines:
+            f.write(line + "\n")
+
+
 def build_instruction_prompt(instruction: str):
     return """
 You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
@@ -49,6 +60,55 @@ fix the single statement bug in this python method
 """.format(
         instruction.strip()
     ).lstrip()
+
+
+def main_incremental():
+    testing_dataset = load_dataset_file(TESTING_DATASET)
+    testing_dataset = testing_dataset[::5]
+
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=False,
+        bnb_4bit_quant_type="nf4",
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL_PATH,
+        quantization_config=quantization_config,
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True,
+        device_map="auto",
+        attn_implementation="flash_attention_2",
+    )
+    model = PeftModel.from_pretrained(model, ADAPTER_PATH)
+    model.generation_config.cache_implementation = "static"
+    model.config.use_cache = True
+
+    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_PATH, trust_remote_code=True, padding_side="left")
+
+    batch_size = 10
+    decoded_outputs = []
+
+    with torch.inference_mode():
+        for i in range(0, len(testing_dataset), batch_size):
+            subset = testing_dataset[i : i + batch_size]
+            prompts = [build_instruction_prompt(entry["input"]) for entry in subset]
+            print(f"Running batch {i} on finetuned model")
+
+            try:
+                inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
+                inputs = {k: v.to(model.device) for k, v in inputs.items()}
+                outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
+                decoded_outputs = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+            except torch.cuda.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                print("OOM on batch, inserting empty outputs.")
+                decoded_outputs = ["" for _ in prompts]
+
+            for entry, output in zip(subset, decoded_outputs):
+                entry["generated_output"] = output
+            save_dataset_incremently(subset, OUTPUT_FILE_INCREMENTAL)
 
 
 def main():
@@ -77,7 +137,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_PATH, trust_remote_code=True, padding_side="left")
 
-    batch_size = 15
+    batch_size = 5
     decoded_outputs = []
 
     def save_on_interrupt(signal_received, frame):
@@ -114,4 +174,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    main_incremental()
