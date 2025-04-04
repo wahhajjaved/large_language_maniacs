@@ -3,6 +3,7 @@ import os
 import pathlib
 import signal
 import sys
+import time
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -12,11 +13,12 @@ import torch
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
+STEP_SIZE = 2
 BASE_MODEL_PATH = "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
 ADAPTER_PATH = "models/DeepSeek-Coder-V2-Lite-Instruct-finetuned-ctssb/checkpoint-3366/adapter_model"
 TESTING_DATASET = pathlib.Path("datasets/ctssb_testing.jsonl")
 OUTPUT_FILE = pathlib.Path("datasets/ctssb_testing_finetuned_output.jsonl")
-OUTPUT_FILE_INCREMENTAL = pathlib.Path("datasets/ctssb_testing_finetuned_output_incremental.jsonl")
+OUTPUT_FILE_INCREMENTAL = pathlib.Path(f"datasets/ctssb_testing_finetuned_output_incremental_step_{STEP_SIZE}.jsonl")
 OUTPUT_FILE_ERROR = pathlib.Path("datasets/ctssb_testing_finetuned_output_error.jsonl")
 
 max_new_tokens = 2048 + 100  # based on model_max_length used during fine tuning
@@ -64,7 +66,7 @@ fix the single statement bug in this python method
 
 def main_incremental():
     testing_dataset = load_dataset_file(TESTING_DATASET)
-    testing_dataset = testing_dataset[::5]
+    testing_dataset = testing_dataset[::STEP_SIZE]
 
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -94,7 +96,7 @@ def main_incremental():
         for i in range(0, len(testing_dataset), batch_size):
             subset = testing_dataset[i : i + batch_size]
             prompts = [build_instruction_prompt(entry["input"]) for entry in subset]
-            print(f"Running batch {i} on finetuned model")
+            print(f"{time.asctime()} Running batch {i} on finetuned model")
 
             try:
                 inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
