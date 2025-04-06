@@ -18,8 +18,8 @@ MANUAL_VERIFICATION_DIR = pathlib.Path("scripts/manual_verification")
 
 SEARCH_BY_CONTENT = True
 MANUAL_VERIFICATION_MODE = False
-MANUAL_VERIFICATION_ITEM = 75
-PARALLEL = False
+MANUAL_VERIFICATION_ITEM = 10
+PARALLEL = True
 
 exact_match = evaluate.load("exact_match")
 bleu = evaluate.load("bleu")
@@ -106,52 +106,90 @@ def compute_metrics(entry: dict):
 
     em_score = exact_match.compute(predictions=predictions, references=references)["exact_match"]
     bleu_score = bleu.compute(predictions=predictions, references=references)["bleu"]
-    codebleu_result = calc_codebleu(references, predictions, lang="python")["codebleu"]
+    codebleu_result = calc_codebleu(references, predictions, lang="python")
 
-    entry["em_score"] = round(float(em_score), 2)
-    entry["bleu_score"] = round(bleu_score, 2)
-    entry["codebleu_result"] = round(codebleu_result, 2)
     entry["levenshtein_distance"] = Levenshtein.distance(predictions[0], references[0])
     entry["levenshtein_ratio"] = Levenshtein.ratio(predictions[0], references[0])
+
+    entry["levenshtein_distance"] = round(entry["levenshtein_distance"], 2)
+    entry["levenshtein_ratio"] = round(entry["levenshtein_ratio"], 2)
+    entry["em_score"] = round(float(em_score), 2)
+    entry["bleu_score"] = round(bleu_score, 2)
+
+    try:
+        entry["ast_match"] = int(ast.dump(ast.parse(predictions[0])) == ast.dump(ast.parse(references[0])))
+    except SyntaxError:
+        entry["ast_match"] = 0
+
+    entry["codebleu_score"] = round(codebleu_result["codebleu"], 2)
+    entry["codebleu_ngram_match_score"] = round(codebleu_result["ngram_match_score"], 2)
+    entry["codebleu_weighted_ngram_match_score"] = round(codebleu_result["weighted_ngram_match_score"], 2)
+    entry["codebleu_syntax_match_score"] = round(codebleu_result["syntax_match_score"], 2)
+    entry["codebleu_dataflow_match_score"] = round(codebleu_result["dataflow_match_score"], 2)
 
     return entry
 
 
 def get_overall_results(data: list[dict]) -> dict[str, float]:
-    total_em_score = 0
-    total_bleu_score = 0
-    total_codebleu_result = 0
     total_levenshtein_distance = 0
     total_levenshtein_ratio = 0
+    total_em_score = 0
+    total_bleu_score = 0
+    total_ast_match = 0
+    total_codebleu_score = 0
+    total_codebleu_ngram_match_score = 0
+    total_codebleu_weighted_ngram_match_score = 0
+    total_codebleu_syntax_match_score = 0
+    total_codebleu_dataflow_match_score = 0
 
     for d in data:
-        total_em_score += d["em_score"]
-        total_bleu_score += d["bleu_score"]
-        total_codebleu_result += d["codebleu_result"]
         total_levenshtein_distance += d["levenshtein_distance"]
         total_levenshtein_ratio += d["levenshtein_ratio"]
+        total_em_score += d["em_score"]
+        total_bleu_score += d["bleu_score"]
+        total_ast_match += d["ast_match"]
+        total_codebleu_score += d["codebleu_score"]
+        total_codebleu_ngram_match_score += d["codebleu_ngram_match_score"]
+        total_codebleu_weighted_ngram_match_score += d["codebleu_weighted_ngram_match_score"]
+        total_codebleu_syntax_match_score += d["codebleu_syntax_match_score"]
+        total_codebleu_dataflow_match_score += d["codebleu_dataflow_match_score"]
 
+    average_levenshtein_ratio = total_levenshtein_ratio / len(data)
+    average_levenshtein_distance = total_levenshtein_distance / len(data)
     average_em_score = total_em_score / len(data)
     average_bleu_score = total_bleu_score / len(data)
-    average_codebleu_result = total_codebleu_result / len(data)
-    average_levenshtein_distance = total_levenshtein_distance / len(data)
-    average_levenshtein_ratio = total_levenshtein_ratio / len(data)
+    average_ast_match = total_ast_match / len(data)
+    average_codebleu_score = total_codebleu_score / len(data)
+    average_codebleu_ngram_match_score = total_codebleu_ngram_match_score / len(data)
+    average_codebleu_weighted_ngram_match_score = total_codebleu_weighted_ngram_match_score / len(data)
+    average_codebleu_syntax_match_score = total_codebleu_syntax_match_score / len(data)
+    average_codebleu_dataflow_match_score = total_codebleu_dataflow_match_score / len(data)
 
     return {
-        "average_em_score": average_em_score,
-        "average_bleu_score": average_bleu_score,
-        "average_codebleu_result": average_codebleu_result,
         "average_levenshtein_distance": average_levenshtein_distance,
         "average_levenshtein_ratio": average_levenshtein_ratio,
+        "average_em_score": average_em_score,
+        "average_bleu_score": average_bleu_score,
+        "average_ast_match": average_ast_match,
+        "average_codebleu_score": average_codebleu_score,
+        "average_codebleu_ngram_match_score": average_codebleu_ngram_match_score,
+        "average_codebleu_weighted_ngram_match_score": average_codebleu_weighted_ngram_match_score,
+        "average_codebleu_syntax_match_score": average_codebleu_syntax_match_score,
+        "average_codebleu_dataflow_match_score": average_codebleu_dataflow_match_score,
     }
 
 
 def print_results(results: dict[str, float]):
-    print(f"average_em_score = {results['average_em_score']:.2f}")
-    print(f"average_bleu_score = {results['average_bleu_score']:.2f}")
-    print(f"average_codebleu_result = {results['average_codebleu_result']:.2f}")
     print(f"average_levenshtein_distance = {results['average_levenshtein_distance']:.2f}")
     print(f"average_levenshtein_ratio = {results['average_levenshtein_ratio']:.2f}")
+    print(f"average_em_score = {results['average_em_score']:.2f}")
+    print(f"average_bleu_score = {results['average_bleu_score']:.2f}")
+    print(f"average_ast_match = {results['average_ast_match']:.2f}")
+    print(f"average_codebleu_score = {results['average_codebleu_score']:.2f}")
+    print(f"average_codebleu_ngram_match_score = {results['average_codebleu_ngram_match_score']:.2f}")
+    print(f"average_codebleu_weighted_ngram_match_score = {results['average_codebleu_weighted_ngram_match_score']:.2f}")
+    print(f"average_codebleu_syntax_match_score = {results['average_codebleu_syntax_match_score']:.2f}")
+    print(f"average_codebleu_dataflow_match_score = {results['average_codebleu_dataflow_match_score']:.2f}")
 
 
 def analyze_base_model(testing_dataset_metadata):
@@ -193,6 +231,19 @@ def analyze_finetuned_model(testing_dataset_metadata):
     return get_overall_results(results)
 
 
+def printsave_manual_verification_results(entry, f):
+    f.write(f"levenshtein_distance = {entry['levenshtein_distance']:.2f}\n")
+    f.write(f"levenshtein_ratio = {entry['levenshtein_ratio']:.2f}\n")
+    f.write(f"em_score = {entry['em_score']:.2f}\n")
+    f.write(f"bleu_score = {entry['bleu_score']:.2f}\n")
+    f.write(f"ast_match = {entry['ast_match']:.2f}\n")
+    f.write(f"codebleu_score = {entry['codebleu_score']:.2f}\n")
+    f.write(f"codebleu_ngram_match_score = {entry['codebleu_ngram_match_score']:.2f}\n")
+    f.write(f"codebleu_weighted_ngram_match_score = {entry['codebleu_weighted_ngram_match_score']:.2f}\n")
+    f.write(f"codebleu_syntax_match_score = {entry['codebleu_syntax_match_score']:.2f}\n")
+    f.write(f"codebleu_dataflow_match_score = {entry['codebleu_dataflow_match_score']:.2f}\n")
+
+
 def manual_verification(testing_dataset_metadata):
     base_model_outputs = load_file(BASE_MODEL_OUTPUT_PATH)
     finetuned_model_outputs = load_file(FINETUNED_MODEL_OUTPUT_PATH)
@@ -214,29 +265,23 @@ def manual_verification(testing_dataset_metadata):
     with open(filename, "w") as f:
         f.write(base_entry["sstub_pattern"] + "\n\n")
         f.write("Base entry results\n")
-        f.write(f"em_score = {base_entry_results['em_score']=:.2f}\n")
-        f.write(f"bleu_score = {base_entry_results['bleu_score']=:.2f}\n")
-        f.write(f"codebleu_result = {base_entry_results['codebleu_result']=:.2f}\n")
-        f.write(f"levenshtein_distance = {base_entry_results['levenshtein_distance']=:.2f}\n")
-        f.write(f"levenshtein_ratio = {base_entry_results['levenshtein_ratio']=:.2f}\n")
+        printsave_manual_verification_results(base_entry_results, f)
 
-        f.write("Fine tuned entry results\n")
-        f.write(f"em_score = {finetuned_entry_results['em_score']=:.2f}\n")
-        f.write(f"bleu_score = {finetuned_entry_results['bleu_score']=:.2f}\n")
-        f.write(f"codebleu_result = {finetuned_entry_results['codebleu_result']=:.2f}\n")
-        f.write(f"levenshtein_distance = {finetuned_entry_results['levenshtein_distance']=:.2f}\n")
-        f.write(f"levenshtein_ratio = {finetuned_entry_results['levenshtein_ratio']=:.2f}\n\n")
+        f.write("\nFine tuned entry results\n")
+        printsave_manual_verification_results(finetuned_entry_results, f)
+        f.write("\n\n")
 
-        f.write("#" * 20 + "\n" + "\tBase Input\n" + "#" * 20 + "\n")
-        f.write(base_entry["input"] + "\n\n")
+        f.write("#" * 40 + "\n" + "\tBase Input\n" + "#" * 40 + "\n")
+        f.write(base_entry["input"] + "\n\n\n")
 
-        f.write("#" * 20 + "\n" + "\tBase Output\n" + "#" * 20 + "\n")
-        f.write(base_entry["output"] + "\n\n")
+        f.write("#" * 40 + "\n" + "\tBase Output\n" + "#" * 40 + "\n")
+        f.write(base_entry["output"] + "\n\n\n")
 
-        f.write("#" * 20 + "\n" + "\tBase Generated Output\n" + "#" * 20 + "\n")
-        f.write(base_entry["generated_output"] + "\n\n")
-        f.write("#" * 20 + "\n" + "\tFinetuned Generated Output\n" + "#" * 20 + "\n")
-        f.write(finetuned_entry["generated_output"] + "\n\n")
+        f.write("#" * 40 + "\n" + "\tBase Generated Output\n" + "#" * 40 + "\n")
+        f.write(base_entry["generated_output"] + "\n\n\n")
+
+        f.write("#" * 40 + "\n" + "\tFinetuned Generated Output\n" + "#" * 40 + "\n")
+        f.write(finetuned_entry["generated_output"] + "\n\n\n")
 
     print(f"Manual verification output saved to {filename.name}")
 
