@@ -27,6 +27,14 @@
             "justMyCode":false
         },
         {
+            "name": "reduce_dataset",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.reduce_dataset",
+            "console": "integratedTerminal",
+            "justMyCode":false
+        },
+        {
             "name": "inference_deepseek_base",
             "type": "debugpy",
             "request": "launch",
@@ -47,6 +55,15 @@
             "type": "debugpy",
             "request": "launch",
             "module": "fine_tune.inference_deepseek_fine_tuned_ctssb",
+            "console": "integratedTerminal",
+            "justMyCode":false,
+            "env": {"CUDA_VISIBLE_DEVICES":"2"}
+        },
+        {
+            "name": "analysis",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.analysis",
             "console": "integratedTerminal",
             "justMyCode":false
         }

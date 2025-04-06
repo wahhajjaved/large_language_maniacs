@@ -1,0 +1,92 @@
+SAME_FUNCTION_LESS_ARGS
+
+####################
+	Base Input
+####################
+def scheduled_handler(event, context):
+    print("scheduled event: ", event)
+    JST = datetime.timezone(datetime.timedelta(hours=+9), 'JST')
+    now = datetime.datetime.now(JST)
+    hour = now.hour
+    
+    if hour == 8:
+        message(OHAYO_MESSAGE.format(hour, get_weather()))
+    if hour == 12:
+        message(OHIRU_MESSAGE.format(hour))
+        
+    if hour == 18:
+        message(OKAERI_MESSAGE.format(hour))
+    if hour == 22:
+        message(OYASUMI_MESSAGE.format(hour))
+    
+    if testing:    
+        message(get_weather())
+
+####################
+	Base Output
+####################
+def scheduled_handler(event, context):
+    print("scheduled event: ", event)
+    JST = datetime.timezone(datetime.timedelta(hours=+9), 'JST')
+    now = datetime.datetime.now(JST)
+    hour = now.hour
+    
+    if hour == 8:
+        message(OHAYO_MESSAGE.format(get_weather()))
+    if hour == 12:
+        message(OHIRU_MESSAGE.format(hour))
+        
+    if hour == 18:
+        message(OKAERI_MESSAGE.format(hour))
+    if hour == 22:
+        message(OYASUMI_MESSAGE.format(hour))
+    
+    if testing:    
+        message(get_weather())
+
+####################
+	Base Generated Output
+####################
+import datetime
+# Define the timezone once
+JST = datetime.timezone(datetime.timedelta(hours=+9), 'JST')
+def scheduled_handler(event, context):
+    print("scheduled event: ", event)
+    now = datetime.datetime.now(JST)
+    hour = now.hour
+    
+    if hour == 8:
+        message(OHAYO_MESSAGE.format(hour, get_weather()))
+    if hour == 12:
+        message(OHIRU_MESSAGE.format(hour))
+        
+    if hour == 18:
+        message(OKAERI_MESSAGE.format(hour))
+    if hour == 22:
+        message(OYASUMI_MESSAGE.format(hour))
+    
+    if testing:    
+        message(get_weather())
+
+####################
+	Finetuned Generated Output
+####################
+def scheduled_handler(event, context):
+    print("scheduled event: ", event)
+    JST = datetime.timezone(hours=+9, name='JST')
+    now = datetime.datetime.now(JST)
+    hour = now.hour
+    
+    if hour == 8:
+        message(OHAYO_MESSAGE.format(hour, get_weather()))
+    if hour == 12:
+        message(OHIRU_MESSAGE.format(hour))
+        
+    if hour == 18:
+        message(OKAERI_MESSAGE.format(hour))
+    if hour == 22:
+        message(OYASUMI_MESSAGE.format(hour))
+    
+    if testing:    
+        message(get_weather())
+

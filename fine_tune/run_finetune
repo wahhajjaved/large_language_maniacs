@@ -1,0 +1,38 @@
+#/bin/bash
+export TRITON_CACHE_DIR="../models/"
+export CUDA_VISIBLE_DEVICES=1,2
+DATA_PATH="../datasets/ctssb_training.jsonl"
+OUTPUT_PATH="../models/DeepSeek-Coder-V2-Lite-Instruct-finetuned-ctssb"
+MODEL_PATH="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+LOGFILE="train_$(date +%Y%m%d_%H%M%S).log"
+
+cd fine_tune
+deepspeed finetune_deepseek.py \
+    --model_name_or_path $MODEL_PATH \
+    --data_path $DATA_PATH \
+    --output_dir $OUTPUT_PATH \
+    --num_train_epochs 3 \
+    --model_max_length 2048 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 4 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 100 \
+    --save_total_limit 3 \
+    --learning_rate 2e-5 \
+    --warmup_steps 10 \
+    --logging_steps 1 \
+    --lr_scheduler_type "cosine" \
+    --gradient_checkpointing True \
+    --report_to "tensorboard" \
+    --deepspeed ds_config_zero2_no_offload.json \
+    --bf16 True \
+    --use_lora True \
+    --bits 4 \
+    --max_grad_norm 0.3 \
+    --double_quant \
+    --lora_r 64 \
+    --lora_alpha 16 \
+    --quant_type nf4 \
+> "$LOGFILE" 2>&1
