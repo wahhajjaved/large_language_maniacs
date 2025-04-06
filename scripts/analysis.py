@@ -1,4 +1,6 @@
 import ast
+import concurrent.futures
+import copy
 import json
 import pathlib
 import re
@@ -15,8 +17,12 @@ FINETUNED_MODEL_OUTPUT_PATH = pathlib.Path("datasets/ctssb_testing_finetuned_out
 MANUAL_VERIFICATION_DIR = pathlib.Path("scripts/manual_verification")
 
 SEARCH_BY_CONTENT = True
-MANUAL_VERIFICATION_MODE = True
-MANUAL_VERIFICATION_ITEM = 0
+MANUAL_VERIFICATION_MODE = False
+MANUAL_VERIFICATION_ITEM = 75
+PARALLEL = False
+
+exact_match = evaluate.load("exact_match")
+bleu = evaluate.load("bleu")
 
 
 def load_file(path: pathlib.Path) -> list:
@@ -48,11 +54,8 @@ def clean_generate_output(generated_output: str) -> str:
     base_model_pattern = r"```python\n(.*?)```"
     cleaned_output2 = re.findall(base_model_pattern, cleaned_output, re.DOTALL)
 
-    if len(cleaned_output2) > 1:
-        raise ValueError("Multiple python blocks found in generated code.")
-
     if cleaned_output2:
-        return cleaned_output2[0].strip()
+        return max(cleaned_output2, key=len).strip()
 
     return cleaned_output
 
@@ -85,19 +88,18 @@ def build_data(
     model_outputs,
 ):
     data: list[dict[str, str]] = []
-    if SEARCH_BY_CONTENT:
-        for model_output in model_outputs:
-            if not model_output["generated_output"]:
-                continue
-            entry = build_entry(testing_dataset_metadata, model_output)
+    model_outputs = [model_output for model_output in model_outputs if model_output["generated_output"]]
 
-            data.append(entry)
+    for i, model_output in enumerate(model_outputs):
+        entry = build_entry(testing_dataset_metadata, model_output)
+        data.append(entry)
+        print(f"\rProcessed {i}/{len(model_outputs)} entries", end="", flush=True)
+
+    print()
     return data
 
 
 def compute_metrics(entry: dict):
-    exact_match = evaluate.load("exact_match")
-    bleu = evaluate.load("bleu")
 
     predictions = [entry["generated_output"]]
     references = [entry["output"]]
@@ -112,8 +114,10 @@ def compute_metrics(entry: dict):
     entry["levenshtein_distance"] = Levenshtein.distance(predictions[0], references[0])
     entry["levenshtein_ratio"] = Levenshtein.ratio(predictions[0], references[0])
 
+    return entry
 
-def get_overall_results(data: list[dict]):
+
+def get_overall_results(data: list[dict]) -> dict[str, float]:
     total_em_score = 0
     total_bleu_score = 0
     total_codebleu_result = 0
@@ -133,31 +137,60 @@ def get_overall_results(data: list[dict]):
     average_levenshtein_distance = total_levenshtein_distance / len(data)
     average_levenshtein_ratio = total_levenshtein_ratio / len(data)
 
-    print(f"{average_em_score=:.2f}")
-    print(f"{average_bleu_score=:.2f}")
-    print(f"{average_codebleu_result=:.2f}")
-    print(f"{average_levenshtein_distance=:.2f}")
-    print(f"{average_levenshtein_ratio=:.2f}")
+    return {
+        "average_em_score": average_em_score,
+        "average_bleu_score": average_bleu_score,
+        "average_codebleu_result": average_codebleu_result,
+        "average_levenshtein_distance": average_levenshtein_distance,
+        "average_levenshtein_ratio": average_levenshtein_ratio,
+    }
+
+
+def print_results(results: dict[str, float]):
+    print(f"average_em_score = {results['average_em_score']:.2f}")
+    print(f"average_bleu_score = {results['average_bleu_score']:.2f}")
+    print(f"average_codebleu_result = {results['average_codebleu_result']:.2f}")
+    print(f"average_levenshtein_distance = {results['average_levenshtein_distance']:.2f}")
+    print(f"average_levenshtein_ratio = {results['average_levenshtein_ratio']:.2f}")
 
 
 def analyze_base_model(testing_dataset_metadata):
     base_model_outputs = load_file(BASE_MODEL_OUTPUT_PATH)
     data = build_data(testing_dataset_metadata, base_model_outputs)
-    for d in data:
-        compute_metrics(d)
+    results = []
 
-    print("\nResults for base model")
-    get_overall_results(data)
+    if PARALLEL:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            futures = [executor.submit(compute_metrics, d) for d in data]
+            for i, future in enumerate(concurrent.futures.as_completed(futures), 1):
+                results.append(future.result())
+                print(f"\rcompute_metrics {i}/{len(data)} entries", end="", flush=True)
+    else:
+        for i, d in enumerate(data):
+            results.append(compute_metrics(d))
+            print(f"\rBase model compute_metrics {i}/{len(data)} entries", end="", flush=True)
+
+    print()
+    return get_overall_results(results)
 
 
 def analyze_finetuned_model(testing_dataset_metadata):
     finetuned_model_outputs = load_file(FINETUNED_MODEL_OUTPUT_PATH)
-    data = build_data(testing_dataset_metadata, finetuned_model_outputs[:10])
-    for d in data:
-        compute_metrics(d)
+    data = build_data(testing_dataset_metadata, finetuned_model_outputs)
+    results = []
+    if PARALLEL:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            futures = [executor.submit(compute_metrics, d) for d in data]
+            for i, future in enumerate(concurrent.futures.as_completed(futures), 1):
+                results.append(future.result())
+                print(f"\rcompute_metrics {i}/{len(data)} entries", end="", flush=True)
+    else:
+        for i, d in enumerate(data):
+            results.append(compute_metrics(d))
+            print(f"\rFinetuned model compute_metrics {i}/{len(data)} entries", end="", flush=True)
 
-    print("\nResults for finetuned model")
-    get_overall_results(data)
+    print()
+    return get_overall_results(results)
 
 
 def manual_verification(testing_dataset_metadata):
@@ -174,9 +207,25 @@ def manual_verification(testing_dataset_metadata):
         print(f"Base entry input does not match fine tuned entry input for entry {MANUAL_VERIFICATION_ITEM}")
         return
 
+    base_entry_results = compute_metrics(base_entry)
+    finetuned_entry_results = compute_metrics(finetuned_entry)
+
     filename = pathlib.Path(MANUAL_VERIFICATION_DIR, f"{base_entry['project_name']}-{base_entry['commit_hash']}.txt")
     with open(filename, "w") as f:
         f.write(base_entry["sstub_pattern"] + "\n\n")
+        f.write("Base entry results\n")
+        f.write(f"em_score = {base_entry_results['em_score']=:.2f}\n")
+        f.write(f"bleu_score = {base_entry_results['bleu_score']=:.2f}\n")
+        f.write(f"codebleu_result = {base_entry_results['codebleu_result']=:.2f}\n")
+        f.write(f"levenshtein_distance = {base_entry_results['levenshtein_distance']=:.2f}\n")
+        f.write(f"levenshtein_ratio = {base_entry_results['levenshtein_ratio']=:.2f}\n")
+
+        f.write("Fine tuned entry results\n")
+        f.write(f"em_score = {finetuned_entry_results['em_score']=:.2f}\n")
+        f.write(f"bleu_score = {finetuned_entry_results['bleu_score']=:.2f}\n")
+        f.write(f"codebleu_result = {finetuned_entry_results['codebleu_result']=:.2f}\n")
+        f.write(f"levenshtein_distance = {finetuned_entry_results['levenshtein_distance']=:.2f}\n")
+        f.write(f"levenshtein_ratio = {finetuned_entry_results['levenshtein_ratio']=:.2f}\n\n")
 
         f.write("#" * 20 + "\n" + "\tBase Input\n" + "#" * 20 + "\n")
         f.write(base_entry["input"] + "\n\n")
@@ -189,14 +238,20 @@ def manual_verification(testing_dataset_metadata):
         f.write("#" * 20 + "\n" + "\tFinetuned Generated Output\n" + "#" * 20 + "\n")
         f.write(finetuned_entry["generated_output"] + "\n\n")
 
+    print(f"Manual verification output saved to {filename.name}")
+
 
 def main():
     testing_dataset_metadata = load_file(TESTING_DATASET_METADATA_PATH)
     if MANUAL_VERIFICATION_MODE:
         manual_verification(testing_dataset_metadata)
     else:
-        analyze_base_model(testing_dataset_metadata)
-        # analyze_finetuned_model(testing_dataset_metadata)
+        base_results = analyze_base_model(testing_dataset_metadata)
+        finetunes_results = analyze_finetuned_model(testing_dataset_metadata)
+        print("\nResults for base model")
+        print_results(base_results)
+        print("\nResults for finetuned model")
+        print_results(finetunes_results)
 
 
 if __name__ == "__main__":

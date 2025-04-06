@@ -1,0 +1,102 @@
+WRONG_FUNCTION_NAME
+
+Base entry results
+em_score = base_entry_results['em_score']=0.00
+bleu_score = base_entry_results['bleu_score']=1.00
+codebleu_result = base_entry_results['codebleu_result']=1.00
+levenshtein_distance = base_entry_results['levenshtein_distance']=68.00
+levenshtein_ratio = base_entry_results['levenshtein_ratio']=0.96
+Fine tuned entry results
+em_score = finetuned_entry_results['em_score']=1.00
+bleu_score = finetuned_entry_results['bleu_score']=1.00
+codebleu_result = finetuned_entry_results['codebleu_result']=1.00
+levenshtein_distance = finetuned_entry_results['levenshtein_distance']=0.00
+levenshtein_ratio = finetuned_entry_results['levenshtein_ratio']=1.00
+####################
+	#Base Input
+####################
+def validate_request(self, request):
+        if request.form_in == "absolute" and request.scheme != "http":
+            self.send_resplonse(make_error_response(400, "Invalid request scheme: %s" % request.scheme))
+            raise HttpException("Invalid request scheme: %s" % request.scheme)
+        expected_request_forms = {
+            "regular": ("absolute",),  # an authority request would already be handled.
+            "upstream": ("authority", "absolute"),
+            "transparent": ("relative",)
+        }
+        allowed_request_forms = expected_request_forms[self.mode]
+        if request.form_in not in allowed_request_forms:
+            err_message = "Invalid HTTP request form (expected: %s, got: %s)" % (
+                " or ".join(allowed_request_forms), request.form_in
+            )
+            self.send_to_client(make_error_response(400, err_message))
+            raise HttpException(err_message)
+        if self.mode == "regular":
+            request.form_out = "relative"
+
+####################
+	#Base Output
+####################
+def validate_request(self, request):
+        if request.form_in == "absolute" and request.scheme != "http":
+            self.send_response(make_error_response(400, "Invalid request scheme: %s" % request.scheme))
+            raise HttpException("Invalid request scheme: %s" % request.scheme)
+        expected_request_forms = {
+            "regular": ("absolute",),  # an authority request would already be handled.
+            "upstream": ("authority", "absolute"),
+            "transparent": ("relative",)
+        }
+        allowed_request_forms = expected_request_forms[self.mode]
+        if request.form_in not in allowed_request_forms:
+            err_message = "Invalid HTTP request form (expected: %s, got: %s)" % (
+                " or ".join(allowed_request_forms), request.form_in
+            )
+            self.send_to_client(make_error_response(400, err_message))
+            raise HttpException(err_message)
+        if self.mode == "regular":
+            request.form_out = "relative"
+
+####################
+	#Base Generated Output
+####################
+def validate_request(self, request):
+    if request.form_in == "absolute" and request.scheme != "http":
+        self.send_response(make_error_response(400, "Invalid request scheme: %s" % request.scheme))
+        raise HttpException("Invalid request scheme: %s" % request.scheme)
+    expected_request_forms = {
+        "regular": ("absolute",),  # an authority request would already be handled.
+        "upstream": ("authority", "absolute"),
+        "transparent": ("relative",)
+    }
+    allowed_request_forms = expected_request_forms[self.mode]
+    if request.form_in not in allowed_request_forms:
+        err_message = "Invalid HTTP request form (expected: %s, got: %s)" % (
+            " or ".join(allowed_request_forms), request.form_in
+        )
+        self.send_to_client(make_error_response(400, err_message))
+        raise HttpException(err_message)
+    if self.mode == "regular":
+        request.form_out = "relative"
+
+####################
+	#Finetuned Generated Output
+####################
+def validate_request(self, request):
+        if request.form_in == "absolute" and request.scheme != "http":
+            self.send_response(make_error_response(400, "Invalid request scheme: %s" % request.scheme))
+            raise HttpException("Invalid request scheme: %s" % request.scheme)
+        expected_request_forms = {
+            "regular": ("absolute",),  # an authority request would already be handled.
+            "upstream": ("authority", "absolute"),
+            "transparent": ("relative",)
+        }
+        allowed_request_forms = expected_request_forms[self.mode]
+        if request.form_in not in allowed_request_forms:
+            err_message = "Invalid HTTP request form (expected: %s, got: %s)" % (
+                " or ".join(allowed_request_forms), request.form_in
+            )
+            self.send_to_client(make_error_response(400, err_message))
+            raise HttpException(err_message)
+        if self.mode == "regular":
+            request.form_out = "relative"
+
