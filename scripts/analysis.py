@@ -15,11 +15,13 @@ TESTING_DATASET_PATH = pathlib.Path("datasets/ctssb_testing.jsonl")
 BASE_MODEL_OUTPUT_PATH = pathlib.Path("datasets/ctssb_testing_base_output_incremental_step_2.jsonl")
 FINETUNED_MODEL_OUTPUT_PATH = pathlib.Path("datasets/ctssb_testing_finetuned_output_incremental_step_2.jsonl")
 MANUAL_VERIFICATION_DIR = pathlib.Path("scripts/manual_verification")
+RESULT_SAVE_LOCATION = pathlib.Path("scripts/analysis_results.txt")
+ALL_RESULT_SAVE_LOCATION = pathlib.Path("scripts/analysis_results_all.txt")
 
 SEARCH_BY_CONTENT = True
 MANUAL_VERIFICATION_MODE = False
 MANUAL_VERIFICATION_ITEM = 10
-PARALLEL = True
+PARALLEL = False
 
 exact_match = evaluate.load("exact_match")
 bleu = evaluate.load("bleu")
@@ -38,7 +40,10 @@ def search_for_commit_hash(file_content: str):
         if file.is_file():
             with file.open("r", errors="ignore") as f:
                 if file_content in f.read():
-                    return file.name.split("_")[0:2]
+                    parts = file.name.split("_")
+                    project_name = "_".join(parts[:-2])
+                    commit_hash = parts[-2]
+                    return project_name, commit_hash
     return ("", "")
 
 
@@ -130,7 +135,7 @@ def compute_metrics(entry: dict):
     return entry
 
 
-def get_overall_results(data: list[dict]) -> dict[str, float]:
+def calculate_average_results(data: list[dict]) -> dict[str, float]:
     total_levenshtein_distance = 0
     total_levenshtein_ratio = 0
     total_em_score = 0
@@ -179,6 +184,23 @@ def get_overall_results(data: list[dict]) -> dict[str, float]:
     }
 
 
+def get_overall_results(data: list[dict]) -> dict[str, dict[str, float]]:
+    grouped: dict[str, list[dict]] = {}
+    for d in data:
+        k = d["sstub_pattern"]
+        if k not in grouped:
+            grouped[k] = []
+        grouped[k].append(d)
+
+    results: dict[str, dict[str, float]] = {}
+    for pattern, pattern_data in grouped.items():
+        results[pattern] = calculate_average_results(pattern_data)
+
+    results["overall"] = calculate_average_results(data)
+
+    return results
+
+
 def print_results(results: dict[str, float]):
     print(f"average_levenshtein_distance = {results['average_levenshtein_distance']:.2f}")
     print(f"average_levenshtein_ratio = {results['average_levenshtein_ratio']:.2f}")
@@ -190,6 +212,24 @@ def print_results(results: dict[str, float]):
     print(f"average_codebleu_weighted_ngram_match_score = {results['average_codebleu_weighted_ngram_match_score']:.2f}")
     print(f"average_codebleu_syntax_match_score = {results['average_codebleu_syntax_match_score']:.2f}")
     print(f"average_codebleu_dataflow_match_score = {results['average_codebleu_dataflow_match_score']:.2f}")
+
+
+def save_results(base_results: dict[str, dict[str, float]], f, all_results=False):
+    for pattern, results in base_results.items():
+        f.write("\n" + "#" * 5 + f" {pattern} " + "#" * 5 + "\n")
+        f.write(f"average_levenshtein_distance = {results['average_levenshtein_distance']:.2f}\n")
+        f.write(f"average_levenshtein_ratio = {results['average_levenshtein_ratio']:.2f}\n")
+        f.write(f"average_em_score = {results['average_em_score']:.2f}\n")
+        f.write(f"average_bleu_score = {results['average_bleu_score']:.2f}\n")
+        f.write(f"average_ast_match = {results['average_ast_match']:.2f}\n")
+        f.write(f"average_codebleu_score = {results['average_codebleu_score']:.2f}\n")
+        if all_results:
+            f.write(f"average_codebleu_ngram_match_score = {results['average_codebleu_ngram_match_score']:.2f}\n")
+            f.write(
+                f"average_codebleu_weighted_ngram_match_score = {results['average_codebleu_weighted_ngram_match_score']:.2f}\n"
+            )
+            f.write(f"average_codebleu_syntax_match_score = {results['average_codebleu_syntax_match_score']:.2f}\n")
+            f.write(f"average_codebleu_dataflow_match_score = {results['average_codebleu_dataflow_match_score']:.2f}\n")
 
 
 def analyze_base_model(testing_dataset_metadata):
@@ -290,13 +330,28 @@ def main():
     testing_dataset_metadata = load_file(TESTING_DATASET_METADATA_PATH)
     if MANUAL_VERIFICATION_MODE:
         manual_verification(testing_dataset_metadata)
-    else:
-        base_results = analyze_base_model(testing_dataset_metadata)
-        finetunes_results = analyze_finetuned_model(testing_dataset_metadata)
-        print("\nResults for base model")
-        print_results(base_results)
-        print("\nResults for finetuned model")
-        print_results(finetunes_results)
+        return
+
+    base_results = analyze_base_model(testing_dataset_metadata)
+    finetuned_results = analyze_finetuned_model(testing_dataset_metadata)
+    with open(ALL_RESULT_SAVE_LOCATION, "w") as f:
+        f.write("#" * 40 + "\n" + "\tBase Model Results\n" + "#" * 40 + "\n")
+        save_results(base_results, f, True)
+        f.write("\n\n")
+        f.write("#" * 40 + "\n" + "\tFinetuned Model Results\n" + "#" * 40 + "\n")
+        save_results(finetuned_results, f, True)
+
+    with open(RESULT_SAVE_LOCATION, "w") as f:
+        f.write("#" * 40 + "\n" + "\tBase Model Results\n" + "#" * 40 + "\n")
+        save_results(base_results, f)
+        f.write("\n\n")
+        f.write("#" * 40 + "\n" + "\tFinetuned Model Results\n" + "#" * 40 + "\n")
+        save_results(finetuned_results, f)
+
+    print("\n\nBase model overall results")
+    print_results(base_results["overall"])
+    print("\n\n\nFinetuned model overall results")
+    print_results(finetuned_results["overall"])
 
 
 if __name__ == "__main__":

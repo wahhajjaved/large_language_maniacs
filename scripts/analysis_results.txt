@@ -1,0 +1,376 @@
+########################################
+	Base Model Results
+########################################
+
+##### ADD_FUNCTION_AROUND_EXPRESSION #####
+average_levenshtein_distance = 229.32
+average_levenshtein_ratio = 0.89
+average_em_score = 0.00
+average_bleu_score = 0.86
+average_ast_match = 0.02
+average_codebleu_score = 0.76
+
+##### CHANGE_STRING_LITERAL #####
+average_levenshtein_distance = 465.94
+average_levenshtein_ratio = 0.86
+average_em_score = 0.00
+average_bleu_score = 0.80
+average_ast_match = 0.00
+average_codebleu_score = 0.77
+
+##### WRONG_FUNCTION_NAME #####
+average_levenshtein_distance = 561.94
+average_levenshtein_ratio = 0.85
+average_em_score = 0.00
+average_bleu_score = 0.82
+average_ast_match = 0.09
+average_codebleu_score = 0.78
+
+##### CHANGE_IDENTIFIER_USED #####
+average_levenshtein_distance = 401.75
+average_levenshtein_ratio = 0.88
+average_em_score = 0.04
+average_bleu_score = 0.85
+average_ast_match = 0.17
+average_codebleu_score = 0.81
+
+##### CHANGE_ATTRIBUTE_USED #####
+average_levenshtein_distance = 340.40
+average_levenshtein_ratio = 0.88
+average_em_score = 0.02
+average_bleu_score = 0.84
+average_ast_match = 0.06
+average_codebleu_score = 0.81
+
+##### MORE_SPECIFIC_IF #####
+average_levenshtein_distance = 317.31
+average_levenshtein_ratio = 0.88
+average_em_score = 0.00
+average_bleu_score = 0.85
+average_ast_match = 0.02
+average_codebleu_score = 0.79
+
+##### CHANGE_BINARY_OPERAND #####
+average_levenshtein_distance = 511.87
+average_levenshtein_ratio = 0.84
+average_em_score = 0.00
+average_bleu_score = 0.78
+average_ast_match = 0.02
+average_codebleu_score = 0.73
+
+##### LESS_SPECIFIC_IF #####
+average_levenshtein_distance = 527.61
+average_levenshtein_ratio = 0.89
+average_em_score = 0.00
+average_bleu_score = 0.84
+average_ast_match = 0.00
+average_codebleu_score = 0.79
+
+##### CHANGE_NUMERIC_LITERAL #####
+average_levenshtein_distance = 411.27
+average_levenshtein_ratio = 0.86
+average_em_score = 0.02
+average_bleu_score = 0.81
+average_ast_match = 0.08
+average_codebleu_score = 0.79
+
+##### SAME_FUNCTION_MORE_ARGS #####
+average_levenshtein_distance = 510.20
+average_levenshtein_ratio = 0.87
+average_em_score = 0.00
+average_bleu_score = 0.80
+average_ast_match = 0.02
+average_codebleu_score = 0.74
+
+##### ADD_METHOD_CALL #####
+average_levenshtein_distance = 647.25
+average_levenshtein_ratio = 0.85
+average_em_score = 0.02
+average_bleu_score = 0.80
+average_ast_match = 0.02
+average_codebleu_score = 0.74
+
+##### CHANGE_BOOLEAN_LITERAL #####
+average_levenshtein_distance = 344.76
+average_levenshtein_ratio = 0.88
+average_em_score = 0.00
+average_bleu_score = 0.85
+average_ast_match = 0.00
+average_codebleu_score = 0.79
+
+##### SINGLE_TOKEN #####
+average_levenshtein_distance = 449.72
+average_levenshtein_ratio = 0.90
+average_em_score = 0.00
+average_bleu_score = 0.88
+average_ast_match = 0.07
+average_codebleu_score = 0.82
+
+##### ADD_ELEMENTS_TO_ITERABLE #####
+average_levenshtein_distance = 314.00
+average_levenshtein_ratio = 0.87
+average_em_score = 0.00
+average_bleu_score = 0.82
+average_ast_match = 0.00
+average_codebleu_score = 0.78
+
+##### SAME_FUNCTION_SWAP_ARGS #####
+average_levenshtein_distance = 481.31
+average_levenshtein_ratio = 0.88
+average_em_score = 0.00
+average_bleu_score = 0.84
+average_ast_match = 0.00
+average_codebleu_score = 0.78
+
+##### ADD_ATTRIBUTE_ACCESS #####
+average_levenshtein_distance = 188.56
+average_levenshtein_ratio = 0.89
+average_em_score = 0.00
+average_bleu_score = 0.87
+average_ast_match = 0.02
+average_codebleu_score = 0.79
+
+##### CHANGE_BINARY_OPERATOR #####
+average_levenshtein_distance = 166.53
+average_levenshtein_ratio = 0.89
+average_em_score = 0.02
+average_bleu_score = 0.85
+average_ast_match = 0.02
+average_codebleu_score = 0.83
+
+##### SAME_FUNCTION_WRONG_CALLER #####
+average_levenshtein_distance = 242.63
+average_levenshtein_ratio = 0.88
+average_em_score = 0.02
+average_bleu_score = 0.85
+average_ast_match = 0.07
+average_codebleu_score = 0.82
+
+##### CHANGE_UNARY_OPERATOR #####
+average_levenshtein_distance = 270.47
+average_levenshtein_ratio = 0.89
+average_em_score = 0.02
+average_bleu_score = 0.84
+average_ast_match = 0.02
+average_codebleu_score = 0.79
+
+##### CHANGE_CONSTANT_TYPE #####
+average_levenshtein_distance = 234.22
+average_levenshtein_ratio = 0.90
+average_em_score = 0.02
+average_bleu_score = 0.87
+average_ast_match = 0.02
+average_codebleu_score = 0.81
+
+##### SAME_FUNCTION_LESS_ARGS #####
+average_levenshtein_distance = 228.11
+average_levenshtein_ratio = 0.87
+average_em_score = 0.00
+average_bleu_score = 0.84
+average_ast_match = 0.09
+average_codebleu_score = 0.77
+
+##### CHANGE_KEYWORD_ARGUMENT_USED #####
+average_levenshtein_distance = 272.45
+average_levenshtein_ratio = 0.85
+average_em_score = 0.00
+average_bleu_score = 0.80
+average_ast_match = 0.07
+average_codebleu_score = 0.76
+
+##### overall #####
+average_levenshtein_distance = 371.43
+average_levenshtein_ratio = 0.88
+average_em_score = 0.01
+average_bleu_score = 0.83
+average_ast_match = 0.04
+average_codebleu_score = 0.78
+
+
+########################################
+	Finetuned Model Results
+########################################
+
+##### ADD_FUNCTION_AROUND_EXPRESSION #####
+average_levenshtein_distance = 81.61
+average_levenshtein_ratio = 0.98
+average_em_score = 0.02
+average_bleu_score = 0.95
+average_ast_match = 0.02
+average_codebleu_score = 0.88
+
+##### CHANGE_STRING_LITERAL #####
+average_levenshtein_distance = 433.36
+average_levenshtein_ratio = 0.96
+average_em_score = 0.15
+average_bleu_score = 0.92
+average_ast_match = 0.15
+average_codebleu_score = 0.89
+
+##### WRONG_FUNCTION_NAME #####
+average_levenshtein_distance = 184.13
+average_levenshtein_ratio = 0.97
+average_em_score = 0.17
+average_bleu_score = 0.94
+average_ast_match = 0.17
+average_codebleu_score = 0.91
+
+##### CHANGE_IDENTIFIER_USED #####
+average_levenshtein_distance = 175.22
+average_levenshtein_ratio = 0.96
+average_em_score = 0.44
+average_bleu_score = 0.94
+average_ast_match = 0.44
+average_codebleu_score = 0.92
+
+##### CHANGE_ATTRIBUTE_USED #####
+average_levenshtein_distance = 289.95
+average_levenshtein_ratio = 0.95
+average_em_score = 0.21
+average_bleu_score = 0.92
+average_ast_match = 0.21
+average_codebleu_score = 0.93
+
+##### MORE_SPECIFIC_IF #####
+average_levenshtein_distance = 160.47
+average_levenshtein_ratio = 0.96
+average_em_score = 0.04
+average_bleu_score = 0.92
+average_ast_match = 0.04
+average_codebleu_score = 0.87
+
+##### CHANGE_BINARY_OPERAND #####
+average_levenshtein_distance = 430.50
+average_levenshtein_ratio = 0.91
+average_em_score = 0.14
+average_bleu_score = 0.89
+average_ast_match = 0.14
+average_codebleu_score = 0.87
+
+##### CHANGE_NUMERIC_LITERAL #####
+average_levenshtein_distance = 4.95
+average_levenshtein_ratio = 0.99
+average_em_score = 0.05
+average_bleu_score = 0.96
+average_ast_match = 0.05
+average_codebleu_score = 0.92
+
+##### ADD_METHOD_CALL #####
+average_levenshtein_distance = 263.23
+average_levenshtein_ratio = 0.96
+average_em_score = 0.17
+average_bleu_score = 0.91
+average_ast_match = 0.17
+average_codebleu_score = 0.87
+
+##### CHANGE_BOOLEAN_LITERAL #####
+average_levenshtein_distance = 613.79
+average_levenshtein_ratio = 0.94
+average_em_score = 0.21
+average_bleu_score = 0.92
+average_ast_match = 0.21
+average_codebleu_score = 0.91
+
+##### SINGLE_TOKEN #####
+average_levenshtein_distance = 99.89
+average_levenshtein_ratio = 0.98
+average_em_score = 0.29
+average_bleu_score = 0.96
+average_ast_match = 0.29
+average_codebleu_score = 0.94
+
+##### LESS_SPECIFIC_IF #####
+average_levenshtein_distance = 41.08
+average_levenshtein_ratio = 0.98
+average_em_score = 0.00
+average_bleu_score = 0.94
+average_ast_match = 0.00
+average_codebleu_score = 0.91
+
+##### ADD_ELEMENTS_TO_ITERABLE #####
+average_levenshtein_distance = 580.66
+average_levenshtein_ratio = 0.92
+average_em_score = 0.00
+average_bleu_score = 0.88
+average_ast_match = 0.03
+average_codebleu_score = 0.87
+
+##### SAME_FUNCTION_MORE_ARGS #####
+average_levenshtein_distance = 389.41
+average_levenshtein_ratio = 0.95
+average_em_score = 0.06
+average_bleu_score = 0.91
+average_ast_match = 0.06
+average_codebleu_score = 0.88
+
+##### SAME_FUNCTION_SWAP_ARGS #####
+average_levenshtein_distance = 13.30
+average_levenshtein_ratio = 0.99
+average_em_score = 0.33
+average_bleu_score = 0.98
+average_ast_match = 0.33
+average_codebleu_score = 0.96
+
+##### ADD_ATTRIBUTE_ACCESS #####
+average_levenshtein_distance = 11.32
+average_levenshtein_ratio = 0.99
+average_em_score = 0.12
+average_bleu_score = 0.96
+average_ast_match = 0.12
+average_codebleu_score = 0.90
+
+##### CHANGE_BINARY_OPERATOR #####
+average_levenshtein_distance = 8.24
+average_levenshtein_ratio = 0.99
+average_em_score = 0.15
+average_bleu_score = 0.96
+average_ast_match = 0.15
+average_codebleu_score = 0.94
+
+##### SAME_FUNCTION_WRONG_CALLER #####
+average_levenshtein_distance = 7.16
+average_levenshtein_ratio = 0.99
+average_em_score = 0.32
+average_bleu_score = 0.97
+average_ast_match = 0.32
+average_codebleu_score = 0.95
+
+##### CHANGE_UNARY_OPERATOR #####
+average_levenshtein_distance = 361.48
+average_levenshtein_ratio = 0.94
+average_em_score = 0.24
+average_bleu_score = 0.92
+average_ast_match = 0.24
+average_codebleu_score = 0.91
+
+##### CHANGE_CONSTANT_TYPE #####
+average_levenshtein_distance = 381.12
+average_levenshtein_ratio = 0.96
+average_em_score = 0.18
+average_bleu_score = 0.92
+average_ast_match = 0.22
+average_codebleu_score = 0.91
+
+##### SAME_FUNCTION_LESS_ARGS #####
+average_levenshtein_distance = 32.24
+average_levenshtein_ratio = 0.97
+average_em_score = 0.20
+average_bleu_score = 0.93
+average_ast_match = 0.22
+average_codebleu_score = 0.89
+
+##### CHANGE_KEYWORD_ARGUMENT_USED #####
+average_levenshtein_distance = 129.72
+average_levenshtein_ratio = 0.97
+average_em_score = 0.20
+average_bleu_score = 0.93
+average_ast_match = 0.20
+average_codebleu_score = 0.90
+
+##### overall #####
+average_levenshtein_distance = 200.45
+average_levenshtein_ratio = 0.97
+average_em_score = 0.17
+average_bleu_score = 0.94
+average_ast_match = 0.18
+average_codebleu_score = 0.91
