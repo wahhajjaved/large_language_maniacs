@@ -1,5 +1,5 @@
 ============================================================
-[Example 1/60] bitcount
+[Example 1/40] bitcount
 ---- Prompt ----
 def bitcount(n):
     count = 0
@@ -83,2200 +83,7 @@ def bitcount(n):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 2/60] breadth_first_search
----- Prompt ----
-from collections import deque as Queue
-
-def breadth_first_search(startnode, goalnode):
-    queue = Queue()
-    queue.append(startnode)
-
-    nodesseen = set()
-    nodesseen.add(startnode)
-
-    while True:
-        node = queue.popleft()
-
-        if node is goalnode:
-            return True
-        else:
-            queue.extend(node for node in node.successors if node not in nodesseen)
-            nodesseen.update(node.successors)
-
-    return False
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-from collections import deque as Queue
-  
-  """
-  Breadth-First Search
-  
-  
-  Input:
-      startnode: A digraph node
-      goalnode: A digraph node
-  
-  Output:
-      Whether goalnode is reachable from startnode
-  """
-  
-
-def breadth_first_search(startnode, goalnode):
-    queue = Queue()
-    queue.append(startnode)
-
-    nodesseen = set()
-    nodesseen.add(startnode)
-
-    while True:
-        node = queue.popleft()
-
-        if node is goalnode:
-            return True
-        else:
-            queue.extend(node for node in node.successors if node not in nodesseen)
-            nodesseen.update(node.successors)
-
-    return False
-### Response:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-from collections import deque as Queue
-  
-  """
-  Breadth-First Search
-  
-  
-  Input:
-      startnode: A digraph node
-      goalnode: A digraph node
-  
-  Output:
-      Whether goalnode is reachable from startnode
-  """
-  
-
-def breadth_first_search(startnode, goalnode):
-    queue = Queue()
-    queue.append(startnode)
-
-    nodesseen = set()
-    nodesseen.add(startnode)
-
-    while True:
-        node = queue.popleft()
-
-        if node is goalnode:
-            return True
-        else:
-            queue.extend(node for node in node.successors if node not in nodesseen)
-            nodesseen.update(node.successors)
-
-    return False
----- Cleaned ----
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-from collections import deque as Queue
-  """
-  Breadth-First Search
-  Input:
-      startnode: A digraph node
-      goalnode: A digraph node
-  Output:
-      Whether goalnode is reachable from startnode
-  """
-def breadth_first_search(startnode, goalnode):
-    queue = Queue()
-    queue.append(startnode)
-    nodesseen = set()
-    nodesseen.add(startnode)
-    while True:
-        node = queue.popleft()
-        if node is goalnode:
-            return True
-        else:
-            queue.extend(node for node in node.successors if node not in nodesseen)
-            nodesseen.update(node.successors)
-    return False
----- Reference ----
-from collections import deque as Queue
-def breadth_first_search(startnode, goalnode):
-    queue = Queue()
-    queue.append(startnode)
-    nodesseen = set()
-    nodesseen.add(startnode)
-    while queue:
-        node = queue.popleft()
-        if node is goalnode:
-            return True
-        else:
-            queue.extend(node for node in node.successors if node not in nodesseen)
-            nodesseen.update(node.successors)
-    return False
-[NO EXACT MATCH] ❌
-[NO AST MATCH ❌]
-❌ Test failure: invalid syntax (<string>, line 1)
-[UNIT TEST FAIL ❌]
-[CodeBLEU] 0.7288
-[BLEU] 0.4572
-[Levenshtein Distance] 263, Similarity: 0.7698
-============================================================
-[Example 3/60] bucketsort
----- Prompt ----
-def bucketsort(arr, k):
-    counts = [0] * k
-    for x in arr:
-        counts[x] += 1
-
-    sorted_arr = []
-    for i, count in enumerate(arr):
-        sorted_arr.extend([i] * count)
-
-    return sorted_arr
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def bucketsort(arr, k):
-    
-    """
-    Bucket Sort
-    
-    
-    Input:
-        arr: A list of small ints
-        k: Upper bound of the size of the ints in arr (not inclusive)
-    
-    Precondition:
-        all(isinstance(x, int) and 0 <= x < k for x in arr)
-    
-    Output:
-        The elements of arr in sorted order
-    """
-    
-    counts = [0] * k
-    for x in arr:
-        counts[x] += 1
-
-    sorted_arr = []
-    for i, count in enumerate(arr):
-        sorted_arr.extend([i] * count)
-
-    return sorted_arr
-### Response:
-def bucketsort(arr, k):
-    
-    """
-    Bucket Sort
-    
-    
-    Input:
-        arr: A list of small ints
-        k: Upper bound of the size of the ints in arr (not inclusive)
-    
-    Precondition:
-        all(isinstance(x, int) and 0 <= x < k for x in arr)
-    
-    Output:
-        The elements of arr in sorted order
-    """
-    
-    counts = [0] * k
-    for x in arr:
-        counts[x] += 1
-
-    sorted_arr = []
-    for i, count in enumerate(counts):
-        sorted_arr.extend([i] * count)
-
-    return sorted_arr
----- Cleaned ----
-def bucketsort(arr, k):
-    counts = [0] * k
-    for x in arr:
-        counts[x] += 1
-    sorted_arr = []
-    for i, count in enumerate(counts):
-        sorted_arr.extend([i] * count)
-    return sorted_arr
----- Reference ----
-def bucketsort(arr, k):
-    counts = [0] * k
-    for x in arr:
-        counts[x] += 1
-    sorted_arr = []
-    for i, count in enumerate(counts):
-        sorted_arr.extend([i] * count)
-    return sorted_arr
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 4/60] depth_first_search
----- Prompt ----
-def depth_first_search(startnode, goalnode):
-    nodesvisited = set()
-
-    def search_from(node):
-        if node in nodesvisited:
-            return False
-        elif node is goalnode:
-            return True
-        else:
-            return any(
-                search_from(nextnode) for nextnode in node.successors
-            )
-
-    return search_from(startnode)
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def depth_first_search(startnode, goalnode):
-    
-    """
-    Depth-first Search
-    
-    
-    Input:
-        startnode: A digraph node
-        goalnode: A digraph node
-    
-    Output:
-        Whether goalnode is reachable from startnode
-    """
-    
-    nodesvisited = set()
-
-    def search_from(node):
-        if node in nodesvisited:
-            return False
-        elif node is goalnode:
-            return True
-        else:
-            return any(
-                search_from(nextnode) for nextnode in node.successors
-            )
-
-    return search_from(startnode)
-### Response:
-def depth_first_search(startnode, goalnode):
-    
-    """
-    Depth-first Search
-    
-    
-    Input:
-        startnode: A digraph node
-        goalnode: A digraph node
-    
-    Output:
-        Whether goalnode is reachable from startnode
-    """
-    
-    nodesvisited = set()
-
-    def search_from(node):
-        if node in nodesvisited:
-            return False
-        elif node is goalnode:
-            return True
-        else:
-            nodesvisited.add(node)
-            return any(
-                search_from(nextnode) for nextnode in node.successors
-            )
-
-    return search_from(startnode)
----- Cleaned ----
-def depth_first_search(startnode, goalnode):
-    nodesvisited = set()
-    def search_from(node):
-        if node in nodesvisited:
-            return False
-        elif node is goalnode:
-            return True
-        else:
-            nodesvisited.add(node)
-            return any(
-                search_from(nextnode) for nextnode in node.successors
-            )
-    return search_from(startnode)
----- Reference ----
-def depth_first_search(startnode, goalnode):
-    nodesvisited = set()
-    def search_from(node):
-        if node in nodesvisited:
-            return False
-        elif node is goalnode:
-            return True
-        else:
-            nodesvisited.add(node)
-            return any(
-                search_from(nextnode) for nextnode in node.successors
-            )
-    return search_from(startnode)
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 5/60] detect_cycle
----- Prompt ----
-def detect_cycle(node):
-    hare = tortoise = node
-
-    while True:
-        if hare.successor is None:
-            return False
-
-        tortoise = tortoise.successor
-        hare = hare.successor.successor
-
-        if hare is tortoise:
-            return True
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def detect_cycle(node):
-    
-    """
-    Linked List Cycle Detection
-    tortoise-hare
-    
-    Implements the tortoise-and-hare method of cycle detection.
-    
-    Input:
-        node: The head node of a linked list
-    
-    Output:
-        Whether the linked list is cyclic
-    """
-    
-    hare = tortoise = node
-
-    while True:
-        if hare.successor is None:
-            return False
-
-        tortoise = tortoise.successor
-        hare = hare.successor.successor
-
-        if hare is tortoise:
-            return True
-### Response:
-def detect_cycle(node):
-    
-    """
-    Linked List Cycle Detection
-    tortoise-hare
-    
-    Implements the tortoise-and-hare method of cycle detection.
-    
-    Input:
-        node: The head node of a linked list
-    
-    Output:
-        Whether the linked list is cyclic
-    """
-    
-    hare = tortoise = node
-
-    while True:
-        if hare.successor is None or hare.successor.successor is None:
-            return False
-
-        tortoise = tortoise.successor
-        hare = hare.successor.successor
-
-        if hare is tortoise:
-            return True
----- Cleaned ----
-def detect_cycle(node):
-    hare = tortoise = node
-    while True:
-        if hare.successor is None or hare.successor.successor is None:
-            return False
-        tortoise = tortoise.successor
-        hare = hare.successor.successor
-        if hare is tortoise:
-            return True
----- Reference ----
-def detect_cycle(node):
-    hare = tortoise = node
-    while True:
-        if hare is None or hare.successor is None:
-            return False
-        tortoise = tortoise.successor
-        hare = hare.successor.successor
-        if hare is tortoise:
-            return True
-[NO EXACT MATCH] ❌
-[NO AST MATCH ❌]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 0.8461
-[BLEU] 0.8381
-[Levenshtein Distance] 20, Similarity: 0.9647
-============================================================
-[Example 6/60] find_first_in_sorted
----- Prompt ----
-def find_first_in_sorted(arr, x):
-    lo = 0
-    hi = len(arr)
-
-    while lo <= hi:
-        mid = (lo + hi) // 2
-
-        if x == arr[mid] and (mid == 0 or x != arr[mid - 1]):
-            return mid
-
-        elif x <= arr[mid]:
-            hi = mid
-
-        else:
-            lo = mid + 1
-
-    return -1
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def find_first_in_sorted(arr, x):
-    
-    """
-    Fancy Binary Search
-    fancy-binsearch
-    
-    
-    Input:
-        arr: A sorted list of ints
-        x: A value to find
-    
-    Output:
-        The lowest index i such that arr[i] == x, or -1 if x not in arr
-    
-    Example:
-        >>> find_first_in_sorted([3, 4, 5, 5, 5, 5, 6], 5)
-        2
-    """
-    
-    lo = 0
-    hi = len(arr)
-
-    while lo <= hi:
-        mid = (lo + hi) // 2
-
-        if x == arr[mid] and (mid == 0 or x != arr[mid - 1]):
-            return mid
-
-        elif x <= arr[mid]:
-            hi = mid
-
-        else:
-            lo = mid + 1
-
-    return -1
-### Response:
-def find_first_in_sorted(arr, x):
-    
-    """
-    Fancy Binary Search
-    fancy-binsearch
-    
-    
-    Input:
-        arr: A sorted list of ints
-        x: A value to find
-    
-    Output:
-        The lowest index i such that arr[i] == x, or -1 if x not in arr
-    
-    Example:
-        >>> find_first_in_sorted([3, 4, 5, 5, 5, 5, 6], 5)
-        2
-    """
-    
-    lo = 0
-    hi = len(arr)
-
-    while lo <= hi:
-        mid = (lo + hi) // 2
-
-        if x == arr[mid] and (mid == 0 or x != arr[mid - 1]):
-            return mid
-
-        elif x <= arr[mid]:
-            hi = mid - 1
-
-        else:
-            lo = mid + 1
-
-    return -1
----- Cleaned ----
-def find_first_in_sorted(arr, x):
-    lo = 0
-    hi = len(arr)
-    while lo <= hi:
-        mid = (lo + hi) // 2
-        if x == arr[mid] and (mid == 0 or x != arr[mid - 1]):
-            return mid
-        elif x <= arr[mid]:
-            hi = mid - 1
-        else:
-            lo = mid + 1
-    return -1
----- Reference ----
-def find_first_in_sorted(arr, x):
-    lo = 0
-    hi = len(arr)
-    while lo < hi:
-        mid = (lo + hi) // 2
-        if x == arr[mid] and (mid == 0 or x != arr[mid - 1]):
-            return mid
-        elif x <= arr[mid]:
-            hi = mid
-        else:
-            lo = mid + 1
-    return -1
-[NO EXACT MATCH] ❌
-[NO AST MATCH ❌]
-❌ Test failure: list index out of range
-[UNIT TEST FAIL ❌]
-[CodeBLEU] 0.8832
-[BLEU] 0.8813
-[Levenshtein Distance] 5, Similarity: 0.9917
-============================================================
-[Example 7/60] find_in_sorted
----- Prompt ----
-def find_in_sorted(arr, x):
-    def binsearch(start, end):
-        if start == end:
-            return -1
-        mid = start + (end - start) // 2
-        if x < arr[mid]:
-            return binsearch(start, mid)
-        elif x > arr[mid]:
-            return binsearch(mid, end)
-        else:
-            return mid
-
-    return binsearch(0, len(arr))
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def find_in_sorted(arr, x):
-    
-    """
-    Binary Search
-    
-    Input:
-        arr: A sorted list of ints
-        x: A value to find
-    
-    Output:
-        An index i such that arr[i] == x, or -1 if x not in arr
-    
-    Example:
-        >>> find_in_sorted([3, 4, 5, 5, 5, 5, 6], 5)
-        3
-    """
-    
-    def binsearch(start, end):
-        if start == end:
-            return -1
-        mid = start + (end - start) // 2
-        if x < arr[mid]:
-            return binsearch(start, mid)
-        elif x > arr[mid]:
-            return binsearch(mid, end)
-        else:
-            return mid
-
-    return binsearch(0, len(arr))
-### Response:
-def find_in_sorted(arr, x):
-    
-    """
-    Binary Search
-    
-    Input:
-        arr: A sorted list of ints
-        x: A value to find
-    
-    Output:
-        An index i such that arr[i] == x, or -1 if x not in arr
-    
-    Example:
-        >>> find_in_sorted([3, 4, 5, 5, 5, 5, 6], 5)
-        3
-    """
-    
-    def binsearch(start, end):
-        if start >= end:
-            return -1
-        mid = start + (end - start) // 2
-        if x < arr[mid]:
-            return binsearch(start, mid)
-        elif x > arr[mid]:
-            return binsearch(mid, end)
-        else:
-            return mid
-
-    return binsearch(0, len(arr))
----- Cleaned ----
-def find_in_sorted(arr, x):
-    def binsearch(start, end):
-        if start >= end:
-            return -1
-        mid = start + (end - start) // 2
-        if x < arr[mid]:
-            return binsearch(start, mid)
-        elif x > arr[mid]:
-            return binsearch(mid, end)
-        else:
-            return mid
-    return binsearch(0, len(arr))
----- Reference ----
-def find_in_sorted(arr, x):
-    def binsearch(start, end):
-        if start == end:
-            return -1
-        mid = start + (end - start) // 2
-        if x < arr[mid]:
-            return binsearch(start, mid)
-        elif x > arr[mid]:
-            return binsearch(mid + 1, end)
-        else:
-            return mid
-    return binsearch(0, len(arr))
-[NO EXACT MATCH] ❌
-[NO AST MATCH ❌]
-❌ Test failure: maximum recursion depth exceeded in comparison
-[UNIT TEST FAIL ❌]
-[CodeBLEU] 0.8433
-[BLEU] 0.8282
-[Levenshtein Distance] 5, Similarity: 0.9915
-============================================================
-[Example 8/60] flatten
----- Prompt ----
-def flatten(arr):
-    for x in arr:
-        if isinstance(x, list):
-            for y in flatten(x):
-                yield y
-        else:
-            yield flatten(x)
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def flatten(arr):
-    
-    """
-    Flatten
-    
-    Flattens a nested list data structure into a single list.
-    
-    
-    Input:
-        arr: A list
-    
-    Precondition:
-        The input has no list containment cycles
-    
-    Output:
-        A generator for the input's non-list objects
-    
-    Example:
-        >>> list(flatten([[1, [], [2, 3]], [[4]], 5]))
-        [1, 2, 3, 4, 5]
-    """
-    
-    for x in arr:
-        if isinstance(x, list):
-            for y in flatten(x):
-                yield y
-        else:
-            yield flatten(x)
-### Response:
-def flatten(arr):
-    
-    """
-    Flatten
-    
-    Flattens a nested list data structure into a single list.
-    
-    
-    Input:
-        arr: A list
-    
-    Precondition:
-        The input has no list containment cycles
-    
-    Output:
-        A generator for the input's non-list objects
-    
-    Example:
-        >>> list(flatten([[1, [], [2, 3]], [[4]], 5]))
-        [1, 2, 3, 4, 5]
-    """
-    
-    for x in arr:
-        if isinstance(x, list):
-            for y in flatten(x):
-                yield y
-        else:
-            yield x
----- Cleaned ----
-def flatten(arr):
-    for x in arr:
-        if isinstance(x, list):
-            for y in flatten(x):
-                yield y
-        else:
-            yield x
----- Reference ----
-def flatten(arr):
-    for x in arr:
-        if isinstance(x, list):
-            for y in flatten(x):
-                yield y
-        else:
-            yield x
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 9/60] gcd
----- Prompt ----
-def gcd(a, b):
-    if b == 0:
-        return a
-    else:
-        return gcd(a % b, b)
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def gcd(a, b):
-    
-    """
-    Input:
-        a: A nonnegative int
-        b: A nonnegative int
-    
-    
-    Greatest Common Divisor
-    
-    Precondition:
-        isinstance(a, int) and isinstance(b, int)
-    
-    Output:
-        The greatest int that divides evenly into a and b
-    
-    Example:
-        >>> gcd(35, 21)
-        7
-    
-    """
-    
-    if b == 0:
-        return a
-    else:
-        return gcd(a % b, b)
-### Response:
-def gcd(a, b):
-    
-    """
-    Input:
-        a: A nonnegative int
-        b: A nonnegative int
-    
-    
-    Greatest Common Divisor
-    
-    Precondition:
-        isinstance(a, int) and isinstance(b, int)
-    
-    Output:
-        The greatest int that divides evenly into a and b
-    
-    Example:
-        >>> gcd(35, 21)
-        7
-    
-    """
-    
-    if b == 0:
-        return a
-    else:
-        return gcd(b, a % b)
----- Cleaned ----
-def gcd(a, b):
-    if b == 0:
-        return a
-    else:
-        return gcd(b, a % b)
----- Reference ----
-def gcd(a, b):
-    if b == 0:
-        return a
-    else:
-        return gcd(b, a % b)
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 10/60] get_factors
----- Prompt ----
-def get_factors(n):
-    if n == 1:
-        return []
-
-    for i in range(2, int(n ** 0.5) + 1):
-        if n % i == 0:
-            return [i] + get_factors(n // i)
-
-    return []
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def get_factors(n):
-    
-    """
-    Prime Factorization
-    
-    
-    Factors an int using naive trial division.
-    
-    Input:
-        n: An int to factor
-    
-    Output:
-        A list of the prime factors of n in sorted order with repetition
-    
-    Precondition:
-        n >= 1
-    
-    Examples:
-        >>> get_factors(1)
-        []
-        >>> get_factors(100)
-        [2, 2, 5, 5]
-        >>> get_factors(101)
-        [101]
-    """
-    
-    if n == 1:
-        return []
-
-    for i in range(2, int(n ** 0.5) + 1):
-        if n % i == 0:
-            return [i] + get_factors(n // i)
-
-    return []
-### Response:
-def get_factors(n):
-    
-    """
-    Prime Factorization
-    
-    
-    Factors an int using naive trial division.
-    
-    Input:
-        n: An int to factor
-    
-    Output:
-        A list of the prime factors of n in sorted order with repetition
-    
-    Precondition:
-        n >= 1
-    
-    Examples:
-        >>> get_factors(1)
-        []
-        >>> get_factors(100)
-        [2, 2, 5, 5]
-        >>> get_factors(101)
-        [101]
-    """
-    
-    if n == 1:
-        return []
-
-    for i in range(2, int(n ** 0.5) + 1):
-        if n % i == 0:
-            return [i] + get_factors(n // i)
-
-    return [n]
----- Cleaned ----
-def get_factors(n):
-    if n == 1:
-        return []
-    for i in range(2, int(n ** 0.5) + 1):
-        if n % i == 0:
-            return [i] + get_factors(n // i)
-    return [n]
----- Reference ----
-def get_factors(n):
-    if n == 1:
-        return []
-    for i in range(2, int(n ** 0.5) + 1):
-        if n % i == 0:
-            return [i] + get_factors(n // i)
-    return [n]
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 11/60] hanoi
----- Prompt ----
-def hanoi(height, start=1, end=3):
-    steps = []
-    if height > 0:
-        helper = ({1, 2, 3} - {start} - {end}).pop()
-        steps.extend(hanoi(height - 1, start, helper))
-        steps.append((start, helper))
-        steps.extend(hanoi(height - 1, helper, end))
-
-    return steps
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def hanoi(height, start=1, end=3):
-    
-    """
-    Towers of Hanoi
-    hanoi
-    
-    
-    An algorithm for solving the Towers of Hanoi puzzle.  Three pegs exist, with a stack of differently-sized
-    disks beginning on one peg, ordered from smallest on top to largest on bottom.  The goal is to move the
-    entire stack to a different peg via a series of steps.  Each step must move a single disk from one peg to
-    another. At no point may a disk be placed on top of another smaller disk.
-    
-    Input:
-        height: The height of the initial stack of disks.
-        start: The numbered peg where the initial stack resides.
-        end: The numbered peg which the stack must be moved onto.
-    
-    Preconditions:
-        height >= 0
-        start in (1, 2, 3)
-        end in (1, 2, 3)
-    
-    Output:
-        An ordered list of pairs (a, b) representing the shortest series of steps (each step moving
-        the top disk from peg a to peg b) that solves the puzzle.
-    """
-    
-    steps = []
-    if height > 0:
-        helper = ({1, 2, 3} - {start} - {end}).pop()
-        steps.extend(hanoi(height - 1, start, helper))
-        steps.append((start, helper))
-        steps.extend(hanoi(height - 1, helper, end))
-
-    return steps
-### Response:
-def hanoi(height, start=1, end=3):
-    
-    """
-    Towers of Hanoi
-    hanoi
-    
-    
-    An algorithm for solving the Towers of Hanoi puzzle.  Three pegs exist, with a stack of differently-sized
-    disks beginning on one peg, ordered from smallest on top to largest on bottom.  The goal is to move the
-    entire stack to a different peg via a series of steps.  Each step must move a single disk from one peg to
-    another. At no point may a disk be placed on top of another smaller disk.
-    
-    Input:
-        height: The height of the initial stack of disks.
-        start: The numbered peg where the initial stack resides.
-        end: The numbered peg which the stack must be moved onto.
-    
-    Preconditions:
-        height >= 0
-        start in (1, 2, 3)
-        end in (1, 2, 3)
-    
-    Output:
-        An ordered list of pairs (a, b) representing the shortest series of steps (each step moving
-        the top disk from peg a to peg b) that solves the puzzle.
-    """
-    
-    steps = []
-    if height > 0:
-        helper = ({1, 2, 3} - {start} - {end}).pop()
-        steps.extend(hanoi(height - 1, start, helper))
-        steps.append((start, end))
-        steps.extend(hanoi(height - 1, helper, end))
-
-    return steps
----- Cleaned ----
-def hanoi(height, start=1, end=3):
-    steps = []
-    if height > 0:
-        helper = ({1, 2, 3} - {start} - {end}).pop()
-        steps.extend(hanoi(height - 1, start, helper))
-        steps.append((start, end))
-        steps.extend(hanoi(height - 1, helper, end))
-    return steps
----- Reference ----
-def hanoi(height, start=1, end=3):
-    steps = []
-    if height > 0:
-        helper = ({1, 2, 3} - {start} - {end}).pop()
-        steps.extend(hanoi(height - 1, start, helper))
-        steps.append((start, end))
-        steps.extend(hanoi(height - 1, helper, end))
-    return steps
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 12/60] is_valid_parenthesization
----- Prompt ----
-def is_valid_parenthesization(parens):
-    depth = 0
-    for paren in parens:
-        if paren == '(':
-            depth += 1
-        else:
-            depth -= 1
-            if depth < 0:
-                return False
-
-    return True
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def is_valid_parenthesization(parens):
-    
-    """
-    Nested Parens
-    Input:
-        parens: A string of parentheses
-    
-    Precondition:
-        all(paren in '()' for paren in parens)
-    
-    Output:
-        Whether the parentheses are properly nested
-    
-    Examples:
-        >>> is_valid_parenthesization('((()()))()')
-        True
-        >>> is_valid_parenthesization(')()(')
-        False
-    """
-    
-    depth = 0
-    for paren in parens:
-        if paren == '(':
-            depth += 1
-        else:
-            depth -= 1
-            if depth < 0:
-                return False
-
-    return True
-### Response:
-def is_valid_parenthesization(parens):
-    
-    """
-    Nested Parens
-    Input:
-        parens: A string of parentheses
-    
-    Precondition:
-        all(paren in '()' for paren in parens)
-    
-    Output:
-        Whether the parentheses are properly nested
-    
-    Examples:
-        >>> is_valid_parenthesization('((()()))()')
-        True
-        >>> is_valid_parenthesization(')()(')
-        False
-    """
-    
-    depth = 0
-    for paren in parens:
-        if paren == '(':
-            depth += 1
-        else:
-            depth -= 1
-            if depth < 0:
-                return False
-
-    return depth == 0
----- Cleaned ----
-def is_valid_parenthesization(parens):
-    depth = 0
-    for paren in parens:
-        if paren == '(':
-            depth += 1
-        else:
-            depth -= 1
-            if depth < 0:
-                return False
-    return depth == 0
----- Reference ----
-def is_valid_parenthesization(parens):
-    depth = 0
-    for paren in parens:
-        if paren == '(':
-            depth += 1
-        else:
-            depth -= 1
-            if depth < 0:
-                return False
-    return depth == 0
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 13/60] kheapsort
----- Prompt ----
-def kheapsort(arr, k):
-    import heapq
-
-    heap = arr[:k]
-    heapq.heapify(heap)
-
-    for x in arr:
-        yield heapq.heappushpop(heap, x)
-
-    while heap:
-        yield heapq.heappop(heap)
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def kheapsort(arr, k):
-    
-    """
-    K-Heapsort
-    k-heapsort
-    
-    Sorts an almost-sorted array, wherein every element is no more than k units from its sorted position, in O(n log k) time.
-    
-    Input:
-        arr: A list of ints
-        k: an int indicating the maximum displacement of an element in arr from its final sorted location
-    
-    Preconditions:
-        The elements of arr are unique.
-        Each element in arr is at most k places from its sorted position.
-    
-    Output:
-        A generator that yields the elements of arr in sorted order
-    
-    Example:
-        >>> list(kheapsort([3, 2, 1, 5, 4], 2))
-        [1, 2, 3, 4, 5]
-        >>> list(kheapsort([5, 4, 3, 2, 1], 4))
-        [1, 2, 3, 4, 5]
-        >>> list(kheapsort([1, 2, 3, 4, 5], 0))
-        [1, 2, 3, 4, 5]
-    """
-    
-    import heapq
-
-    heap = arr[:k]
-    heapq.heapify(heap)
-
-    for x in arr:
-        yield heapq.heappushpop(heap, x)
-
-    while heap:
-        yield heapq.heappop(heap)
-### Response:
-def kheapsort(arr, k):
-    
-    """
-    K-Heapsort
-    k-heapsort
-    
-    Sorts an almost-sorted array, wherein every element is no more than k units from its sorted position, in O(n log k) time.
-    
-    Input:
-        arr: A list of ints
-        k: an int indicating the maximum displacement of an element in arr from its final sorted location
-    
-    Preconditions:
-        The elements of arr are unique.
-        Each element in arr is at most k places from its sorted position.
-    
-    Output:
-        A generator that yields the elements of arr in sorted order
-    
-    Example:
-        >>> list(kheapsort([3, 2, 1, 5, 4], 2))
-        [1, 2, 3, 4, 5]
-        >>> list(kheapsort([5, 4, 3, 2, 1], 4))
-        [1, 2, 3, 4, 5]
-        >>> list(kheapsort([1, 2, 3, 4, 5], 0))
-        [1, 2, 3, 4, 5]
-    """
-    
-    import heapq
-
-    heap = arr[:k+1]
-    heapq.heapify(heap)
-
-    for x in arr:
-        yield heapq.heappushpop(heap, x)
-
-    while heap:
-        yield heapq.heappop(heap)
----- Cleaned ----
-def kheapsort(arr, k):
-    import heapq
-    heap = arr[:k+1]
-    heapq.heapify(heap)
-    for x in arr:
-        yield heapq.heappushpop(heap, x)
-    while heap:
-        yield heapq.heappop(heap)
----- Reference ----
-def kheapsort(arr, k):
-    import heapq
-    heap = arr[:k]
-    heapq.heapify(heap)
-    for x in arr[k:]:
-        yield heapq.heappushpop(heap, x)
-    while heap:
-        yield heapq.heappop(heap)
-[NO EXACT MATCH] ❌
-[NO AST MATCH ❌]
-❌ Test failure: 
-[UNIT TEST FAIL ❌]
-[CodeBLEU] 0.6812
-[BLEU] 0.7077
-[Levenshtein Distance] 6, Similarity: 0.9845
-============================================================
-[Example 14/60] knapsack
----- Prompt ----
-def knapsack(capacity, items):
-    from collections import defaultdict
-    memo = defaultdict(int)
-
-    for i in range(1, len(items) + 1):
-        weight, value = items[i - 1]
-
-        for j in range(1, capacity + 1):
-            memo[i, j] = memo[i - 1, j]
-
-            if weight < j:
-                memo[i, j] = max(
-                    memo[i, j],
-                    value + memo[i - 1, j - weight]
-                )
-
-    return memo[len(items), capacity]
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def knapsack(capacity, items):
-    
-    """
-    Knapsack
-    knapsack
-    
-    You have a knapsack that can hold a maximum weight. You are given a selection of items, each with a weight and a value. You may
-    choose to take or leave each item, but you must choose items whose total weight does not exceed the capacity of your knapsack.
-    
-    Input:
-        capacity: Max weight the knapsack can hold, an int
-        items: The items to choose from, a list of (weight, value) pairs
-    
-    Output:
-        The maximum total value of any combination of items that the knapsack can hold
-    
-    Example:
-        >>> knapsack(100, [(60, 10), (50, 8), (20, 4), (20, 4), (8, 3), (3, 2)])
-        19
-    """
-    
-    from collections import defaultdict
-    memo = defaultdict(int)
-
-    for i in range(1, len(items) + 1):
-        weight, value = items[i - 1]
-
-        for j in range(1, capacity + 1):
-            memo[i, j] = memo[i - 1, j]
-
-            if weight < j:
-                memo[i, j] = max(
-                    memo[i, j],
-                    value + memo[i - 1, j - weight]
-                )
-
-    return memo[len(items), capacity]
-### Response:
-def knapsack(capacity, items):
-    
-    """
-    Knapsack
-    knapsack
-    
-    You have a knapsack that can hold a maximum weight. You are given a selection of items, each with a weight and a value. You may
-    choose to take or leave each item, but you must choose items whose total weight does not exceed the capacity of your knapsack.
-    
-    Input:
-        capacity: Max weight the knapsack can hold, an int
-        items: The items to choose from, a list of (weight, value) pairs
-    
-    Output:
-        The maximum total value of any combination of items that the knapsack can hold
-    
-    Example:
-        >>> knapsack(100, [(60, 10), (50, 8), (20, 4), (20, 4), (8, 3), (3, 2)])
-        19
-    """
-    
-    from collections import defaultdict
-    memo = defaultdict(int)
-
-    for i in range(1, len(items) + 1):
-        weight, value = items[i - 1]
-
-        for j in range(1, capacity + 1):
-            memo[i, j] = memo[i - 1, j]
-
-            if weight <= j:
-                memo[i, j] = max(
-                    memo[i, j],
-                    value + memo[i - 1, j - weight]
-                )
-
-    return memo[len(items), capacity]
----- Cleaned ----
-def knapsack(capacity, items):
-    from collections import defaultdict
-    memo = defaultdict(int)
-    for i in range(1, len(items) + 1):
-        weight, value = items[i - 1]
-        for j in range(1, capacity + 1):
-            memo[i, j] = memo[i - 1, j]
-            if weight <= j:
-                memo[i, j] = max(
-                    memo[i, j],
-                    value + memo[i - 1, j - weight]
-                )
-    return memo[len(items), capacity]
----- Reference ----
-def knapsack(capacity, items):
-    from collections import defaultdict
-    memo = defaultdict(int)
-    for i in range(1, len(items) + 1):
-        weight, value = items[i - 1]
-        for j in range(1, capacity + 1):
-            memo[i, j] = memo[i - 1, j]
-            if weight <= j:
-                memo[i, j] = max(
-                    memo[i, j],
-                    value + memo[i - 1, j - weight]
-                )
-    return memo[len(items), capacity]
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 15/60] kth
----- Prompt ----
-def kth(arr, k):
-    pivot = arr[0]
-    below = [x for x in arr if x < pivot]
-    above = [x for x in arr if x > pivot]
-
-    num_less = len(below)
-    num_lessoreq = len(arr) - len(above)
-
-    if k < num_less:
-        return kth(below, k)
-    elif k >= num_lessoreq:
-        return kth(above, k)
-    else:
-        return pivot
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def kth(arr, k):
-    
-    """
-    QuickSelect
-    
-    This is an efficient equivalent to sorted(arr)[k].
-    
-    Input:
-        arr: A list of ints
-        k: An int
-    
-    Precondition:
-        0 <= k < len(arr)
-    
-    Output:
-        The kth-lowest element of arr (0-based)
-    """
-    
-    pivot = arr[0]
-    below = [x for x in arr if x < pivot]
-    above = [x for x in arr if x > pivot]
-
-    num_less = len(below)
-    num_lessoreq = len(arr) - len(above)
-
-    if k < num_less:
-        return kth(below, k)
-    elif k >= num_lessoreq:
-        return kth(above, k)
-    else:
-        return pivot
-### Response:
-def kth(arr, k):
-    
-    """
-    QuickSelect
-    
-    This is an efficient equivalent to sorted(arr)[k].
-    
-    Input:
-        arr: A list of ints
-        k: An int
-    
-    Precondition:
-        0 <= k < len(arr)
-    
-    Output:
-        The kth-lowest element of arr (0-based)
-    """
-    
-    pivot = arr[0]
-    below = [x for x in arr if x < pivot]
-    above = [x for x in arr if x > pivot]
-
-    num_less = len(below)
-    num_lessoreq = len(arr) - len(above)
-
-    if k < num_less:
-        return kth(below, k)
-    elif k >= num_lessoreq:
-        return kth(above, k - num_lessoreq)
-    else:
-        return pivot
----- Cleaned ----
-def kth(arr, k):
-    pivot = arr[0]
-    below = [x for x in arr if x < pivot]
-    above = [x for x in arr if x > pivot]
-    num_less = len(below)
-    num_lessoreq = len(arr) - len(above)
-    if k < num_less:
-        return kth(below, k)
-    elif k >= num_lessoreq:
-        return kth(above, k - num_lessoreq)
-    else:
-        return pivot
----- Reference ----
-def kth(arr, k):
-    pivot = arr[0]
-    below = [x for x in arr if x < pivot]
-    above = [x for x in arr if x > pivot]
-    num_less = len(below)
-    num_lessoreq = len(arr) - len(above)
-    if k < num_less:
-        return kth(below, k)
-    elif k >= num_lessoreq:
-        return kth(above, k - num_lessoreq)
-    else:
-        return pivot
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 16/60] lcs_length
----- Prompt ----
-def lcs_length(s, t):
-    from collections import Counter
-
-    dp = Counter()
-
-    for i in range(len(s)):
-        for j in range(len(t)):
-            if s[i] == t[j]:
-                dp[i, j] = dp[i - 1, j] + 1
-
-    return max(dp.values()) if dp else 0
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def lcs_length(s, t):
-    
-    """
-    Longest Common Substring
-    longest-common-substring
-    
-    Input:
-        s: a string
-        t: a string
-    
-    Output:
-        Length of the longest substring common to s and t
-    
-    Example:
-        >>> lcs_length('witch', 'sandwich')
-        2
-        >>> lcs_length('meow', 'homeowner')
-        4
-    """
-    
-    from collections import Counter
-
-    dp = Counter()
-
-    for i in range(len(s)):
-        for j in range(len(t)):
-            if s[i] == t[j]:
-                dp[i, j] = dp[i - 1, j] + 1
-
-    return max(dp.values()) if dp else 0
-### Response:
-def lcs_length(s, t):
-    
-    """
-    Longest Common Substring
-    longest-common-substring
-    
-    Input:
-        s: a string
-        t: a string
-    
-    Output:
-        Length of the longest substring common to s and t
-    
-    Example:
-        >>> lcs_length('witch', 'sandwich')
-        2
-        >>> lcs_length('meow', 'homeowner')
-        4
-    """
-    
-    from collections import Counter
-
-    dp = Counter()
-
-    for i in range(len(s)):
-        for j in range(len(t)):
-            if s[i] == t[j]:
-                dp[i, j] = dp[i - 1, j - 1] + 1
-
-    return max(dp.values()) if dp else 0
----- Cleaned ----
-def lcs_length(s, t):
-    from collections import Counter
-    dp = Counter()
-    for i in range(len(s)):
-        for j in range(len(t)):
-            if s[i] == t[j]:
-                dp[i, j] = dp[i - 1, j - 1] + 1
-    return max(dp.values()) if dp else 0
----- Reference ----
-def lcs_length(s, t):
-    from collections import Counter
-    dp = Counter()
-    for i in range(len(s)):
-        for j in range(len(t)):
-            if s[i] == t[j]:
-                dp[i, j] = dp[i - 1, j - 1] + 1
-    return max(dp.values()) if dp else 0
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 17/60] levenshtein
----- Prompt ----
-def levenshtein(source, target):
-    if source == '' or target == '':
-        return len(source) or len(target)
-
-    elif source[0] == target[0]:
-        return 1 + levenshtein(source[1:], target[1:])
-
-    else:
-        return 1 + min(
-            levenshtein(source,     target[1:]),
-            levenshtein(source[1:], target[1:]),
-            levenshtein(source[1:], target)
-        )
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def levenshtein(source, target):
-    
-    """
-    Levenshtein Distance
-    
-    
-    Calculates the Levenshtein distance between two strings.  The Levenshtein distance is defined as the minimum amount of single-character edits (either removing a character, adding a character, or changing a character) necessary to transform a source string into a target string.
-    
-    Input:
-        source: The string you begin with.
-        target: The string to transform into.
-    
-    Output:
-        The Levenshtein distance between the source and target.
-    
-    Example:
-        electron can be transformed into neutron by removing the e, turning the l into n, and turning the c into u.
-        >>> levenshtein(electron, neutron)
-        3
-    """
-    
-    if source == '' or target == '':
-        return len(source) or len(target)
-
-    elif source[0] == target[0]:
-        return 1 + levenshtein(source[1:], target[1:])
-
-    else:
-        return 1 + min(
-            levenshtein(source,     target[1:]),
-            levenshtein(source[1:], target[1:]),
-            levenshtein(source[1:], target)
-        )
-### Response:
-def levenshtein(source, target):
-    
-    """
-    Levenshtein Distance
-    
-    
-    Calculates the Levenshtein distance between two strings.  The Levenshtein distance is defined as the minimum amount of single-character edits (either removing a character, adding a character, or changing a character) necessary to transform a source string into a target string.
-    
-    Input:
-        source: The string you begin with.
-        target: The string to transform into.
-    
-    Output:
-        The Levenshtein distance between the source and target.
-    
-    Example:
-        electron can be transformed into neutron by removing the e, turning the l into n, and turning the c into u.
-        >>> levenshtein(electron, neutron)
-        3
-    """
-    
-    if source == '' or target == '':
-        return len(source) or len(target)
-
-    elif source[0] == target[0]:
-        return 1 + levenshtein(source[1:], target[1:])
-
-    else:
-        return 1 + min(
-            levenshtein(source,     target[1:]),
-            levenshtein(source[1:], target[1:]),
-            levenshtein(source[1:], target)
-        )
----- Cleaned ----
-def levenshtein(source, target):
-    if source == '' or target == '':
-        return len(source) or len(target)
-    elif source[0] == target[0]:
-        return 1 + levenshtein(source[1:], target[1:])
-    else:
-        return 1 + min(
-            levenshtein(source,     target[1:]),
-            levenshtein(source[1:], target[1:]),
-            levenshtein(source[1:], target)
-        )
----- Reference ----
-def levenshtein(source, target):
-    if source == '' or target == '':
-        return len(source) or len(target)
-    elif source[0] == target[0]:
-        return levenshtein(source[1:], target[1:])
-    else:
-        return 1 + min(
-            levenshtein(source,     target[1:]),
-            levenshtein(source[1:], target[1:]),
-            levenshtein(source[1:], target)
-        )
-[NO EXACT MATCH] ❌
-[NO AST MATCH ❌]
-❌ Test failure: 
-[UNIT TEST FAIL ❌]
-[CodeBLEU] 0.9264
-[BLEU] 0.8967
-[Levenshtein Distance] 4, Similarity: 0.9948
-============================================================
-[Example 18/60] lis
----- Prompt ----
-def lis(arr):
-    ends = {}
-    longest = 0
-
-    for i, val in enumerate(arr):
-
-        prefix_lengths = [j for j in range(1, longest + 1) if arr[ends[j]] < val]
-
-        length = max(prefix_lengths) if prefix_lengths else 0
-
-        if length == longest or val < arr[ends[length + 1]]:
-            ends[length + 1] = i
-            longest = length + 1
-
-    return longest
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def lis(arr):
-    
-    """
-    Longest Increasing Subsequence
-    longest-increasing-subsequence
-    
-    
-    Input:
-        arr: A sequence of ints
-    
-    Precondition:
-        The ints in arr are unique
-    
-    Output:
-        The length of the longest monotonically increasing subsequence of arr
-    
-    Example:
-        >>> lis([4, 1, 5, 3, 7, 6, 2])
-        3
-    """
-    
-    ends = {}
-    longest = 0
-
-    for i, val in enumerate(arr):
-
-        prefix_lengths = [j for j in range(1, longest + 1) if arr[ends[j]] < val]
-
-        length = max(prefix_lengths) if prefix_lengths else 0
-
-        if length == longest or val < arr[ends[length + 1]]:
-            ends[length + 1] = i
-            longest = length + 1
-
-    return longest
-### Response:
-def lis(arr):
-    
-    """
-    Longest Increasing Subsequence
-    longest-increasing-subsequence
-    
-    
-    Input:
-        arr: A sequence of ints
-    
-    Precondition:
-        The ints in arr are unique
-    
-    Output:
-        The length of the longest monotonically increasing subsequence of arr
-    
-    Example:
-        >>> lis([4, 1, 5, 3, 7, 6, 2])
-        3
-    """
-    
-    ends = {}
-    longest = 0
-
-    for i, val in enumerate(arr):
-
-        prefix_lengths = [j for j in range(1, longest + 1) if arr[ends[j]] < val]
-
-        length = max(prefix_lengths) if prefix_lengths else 0
-
-        if length == longest or val < arr[ends[length + 1]]:
-            ends[length + 1] = i
-            longest = max(longest, length + 1)
-
-    return longest
----- Cleaned ----
-def lis(arr):
-    ends = {}
-    longest = 0
-    for i, val in enumerate(arr):
-        prefix_lengths = [j for j in range(1, longest + 1) if arr[ends[j]] < val]
-        length = max(prefix_lengths) if prefix_lengths else 0
-        if length == longest or val < arr[ends[length + 1]]:
-            ends[length + 1] = i
-            longest = max(longest, length + 1)
-    return longest
----- Reference ----
-def lis(arr):
-    ends = {}
-    longest = 0
-    for i, val in enumerate(arr):
-        prefix_lengths = [j for j in range(1, longest + 1) if arr[ends[j]] < val]
-        length = max(prefix_lengths) if prefix_lengths else 0
-        if length == longest or val < arr[ends[length + 1]]:
-            ends[length + 1] = i
-            longest = max(longest, length + 1)
-    return longest
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 19/60] longest_common_subsequence
----- Prompt ----
-def longest_common_subsequence(a, b):
-    if not a or not b:
-        return ''
-
-    elif a[0] == b[0]:
-        return a[0] + longest_common_subsequence(a[1:], b)
-
-    else:
-        return max(
-            longest_common_subsequence(a, b[1:]),
-            longest_common_subsequence(a[1:], b),
-            key=len
-        )
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def longest_common_subsequence(a, b):
-    
-    """
-    Longest Common Subsequence
-    
-    
-    Calculates the longest subsequence common to the two input strings. (A subsequence is any sequence of letters in the same order
-    they appear in the string, possibly skipping letters in between.)
-    
-    Input:
-        a: The first string to consider.
-        b: The second string to consider.
-    
-    Output:
-        The longest string which is a subsequence of both strings. (If multiple subsequences of equal length exist, either is OK.)
-    
-    Example:
-        >>> longest_common_subsequence('headache', 'pentadactyl')
-        'eadac'
-    """
-    
-    if not a or not b:
-        return ''
-
-    elif a[0] == b[0]:
-        return a[0] + longest_common_subsequence(a[1:], b)
-
-    else:
-        return max(
-            longest_common_subsequence(a, b[1:]),
-            longest_common_subsequence(a[1:], b),
-            key=len
-        )
-### Response:
-def longest_common_subsequence(a, b):
-    
-    """
-    Longest Common Subsequence
-    
-    
-    Calculates the longest subsequence common to the two input strings. (A subsequence is any sequence of letters in the same order
-    they appear in the string, possibly skipping letters in between.)
-    
-    Input:
-        a: The first string to consider.
-        b: The second string to consider.
-    
-    Output:
-        The longest string which is a subsequence of both strings. (If multiple subsequences of equal length exist, either is OK.)
-    
-    Example:
-        >>> longest_common_subsequence('headache', 'pentadactyl')
-        'eadac'
-    """
-    
-    if not a or not b:
-        return ''
-
-    elif a[0] == b[0]:
-        return a[0] + longest_common_subsequence(a[1:], b[1:])
-
-    else:
-        return max(
-            longest_common_subsequence(a, b[1:]),
-            longest_common_subsequence(a[1:], b),
-            key=len
-        )
----- Cleaned ----
-def longest_common_subsequence(a, b):
-    if not a or not b:
-        return ''
-    elif a[0] == b[0]:
-        return a[0] + longest_common_subsequence(a[1:], b[1:])
-    else:
-        return max(
-            longest_common_subsequence(a, b[1:]),
-            longest_common_subsequence(a[1:], b),
-            key=len
-        )
----- Reference ----
-def longest_common_subsequence(a, b):
-    if not a or not b:
-        return ''
-    elif a[0] == b[0]:
-        return a[0] + longest_common_subsequence(a[1:], b[1:])
-    else:
-        return max(
-            longest_common_subsequence(a, b[1:]),
-            longest_common_subsequence(a[1:], b),
-            key=len
-        )
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 20/60] max_sublist_sum
----- Prompt ----
-def max_sublist_sum(arr):
-    max_ending_here = 0
-    max_so_far = 0
-
-    for x in arr:
-        max_ending_here = max_ending_here + x
-        max_so_far = max(max_so_far, max_ending_here)
-
-    return max_so_far
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def max_sublist_sum(arr):
-    
-    """
-    Max Sublist Sum
-    max-sublist-sum
-    
-    Efficient equivalent to max(sum(arr[i:j]) for 0 <= i <= j <= len(arr))
-    
-    Algorithm source: WordAligned.org by Thomas Guest
-    
-    
-    Input:
-        arr: A list of ints
-    
-    Output:
-        The maximum sublist sum
-    
-    Example:
-        >>> max_sublist_sum([4, -5, 2, 1, -1, 3])
-        5
-    """
-    
-    max_ending_here = 0
-    max_so_far = 0
-
-    for x in arr:
-        max_ending_here = max_ending_here + x
-        max_so_far = max(max_so_far, max_ending_here)
-
-    return max_so_far
-### Response:
-def max_sublist_sum(arr):
-    
-    """
-    Max Sublist Sum
-    max-sublist-sum
-    
-    Efficient equivalent to max(sum(arr[i:j]) for 0 <= i <= j <= len(arr))
-    
-    Algorithm source: WordAligned.org by Thomas Guest
-    
-    
-    Input:
-        arr: A list of ints
-    
-    Output:
-        The maximum sublist sum
-    
-    Example:
-        >>> max_sublist_sum([4, -5, 2, 1, -1, 3])
-        5
-    """
-    
-    max_ending_here = 0
-    max_so_far = 0
-
-    for x in arr:
-        max_ending_here = max(max_ending_here + x, 0)
-        max_so_far = max(max_so_far, max_ending_here)
-
-    return max_so_far
----- Cleaned ----
-def max_sublist_sum(arr):
-    max_ending_here = 0
-    max_so_far = 0
-    for x in arr:
-        max_ending_here = max(max_ending_here + x, 0)
-        max_so_far = max(max_so_far, max_ending_here)
-    return max_so_far
----- Reference ----
-def max_sublist_sum(arr):
-    max_ending_here = 0
-    max_so_far = 0
-    for x in arr:
-        max_ending_here = max(0, max_ending_here + x)
-        max_so_far = max(max_so_far, max_ending_here)
-    return max_so_far
-[NO EXACT MATCH] ❌
-[NO AST MATCH ❌]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 0.7697
-[BLEU] 0.7591
-[Levenshtein Distance] 6, Similarity: 0.9861
-============================================================
-[Example 21/60] bitcount
----- Prompt ----
-def bitcount(n):
-    count = 0
-    while n:
-        n ^= n - 1
-        count += 1
-    return count
----- Prediction ----
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-def bitcount(n):
-    
-    """
-    Bitcount
-    bitcount
-    
-    
-    Input:
-        n: a nonnegative int
-    
-    Output:
-        The number of 1-bits in the binary encoding of n
-    
-    Examples:
-        >>> bitcount(127)
-        7
-        >>> bitcount(128)
-        1
-    """
-    
-    count = 0
-    while n:
-        n ^= n - 1
-        count += 1
-    return count
-### Response:
-def bitcount(n):
-    
-    """
-    Bitcount
-    bitcount
-    
-    
-    Input:
-        n: a nonnegative int
-    
-    Output:
-        The number of 1-bits in the binary encoding of n
-    
-    Examples:
-        >>> bitcount(127)
-        7
-        >>> bitcount(128)
-        1
-    """
-    
-    count = 0
-    while n:
-        n &= n - 1
-        count += 1
-    return count
----- Cleaned ----
-def bitcount(n):
-    count = 0
-    while n:
-        n &= n - 1
-        count += 1
-    return count
----- Reference ----
-def bitcount(n):
-    count = 0
-    while n:
-        n &= n - 1
-        count += 1
-    return count
-[EXACT MATCH] ✅
-[AST MATCH ✅]
-[UNIT TEST MATCH ✅]
-[CodeBLEU] 1.0000
-[BLEU] 1.0000
-[Levenshtein Distance] 0, Similarity: 1.0000
-============================================================
-[Example 22/60] breadth_first_search
+[Example 2/40] breadth_first_search
 ---- Prompt ----
 from collections import deque as Queue
 
@@ -2388,7 +195,7 @@ def breadth_first_search(startnode, goalnode):
 [BLEU] 0.7836
 [Levenshtein Distance] 42, Similarity: 0.9484
 ============================================================
-[Example 23/60] bucketsort
+[Example 3/40] bucketsort
 ---- Prompt ----
 def bucketsort(arr, k):
     counts = [0] * k
@@ -2482,7 +289,7 @@ def bucketsort(arr, k):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 24/60] depth_first_search
+[Example 4/40] depth_first_search
 ---- Prompt ----
 def depth_first_search(startnode, goalnode):
     nodesvisited = set()
@@ -2593,7 +400,7 @@ def depth_first_search(startnode, goalnode):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 25/60] detect_cycle
+[Example 5/40] detect_cycle
 ---- Prompt ----
 def detect_cycle(node):
     hare = tortoise = node
@@ -2691,7 +498,7 @@ def detect_cycle(node):
 [BLEU] 0.8381
 [Levenshtein Distance] 20, Similarity: 0.9647
 ============================================================
-[Example 26/60] find_first_in_sorted
+[Example 6/40] find_first_in_sorted
 ---- Prompt ----
 def find_first_in_sorted(arr, x):
     lo = 0
@@ -2819,7 +626,7 @@ def find_first_in_sorted(arr, x):
 [BLEU] 0.8813
 [Levenshtein Distance] 5, Similarity: 0.9917
 ============================================================
-[Example 27/60] find_in_sorted
+[Example 7/40] find_in_sorted
 ---- Prompt ----
 def find_in_sorted(arr, x):
     def binsearch(start, end):
@@ -2925,13 +732,13 @@ def find_in_sorted(arr, x):
     return binsearch(0, len(arr))
 [NO EXACT MATCH] ❌
 [NO AST MATCH ❌]
-❌ Test failure: maximum recursion depth exceeded in comparison
+❌ Test failure: maximum recursion depth exceeded
 [UNIT TEST FAIL ❌]
 [CodeBLEU] 0.8433
 [BLEU] 0.8282
 [Levenshtein Distance] 5, Similarity: 0.9915
 ============================================================
-[Example 28/60] flatten
+[Example 8/40] flatten
 ---- Prompt ----
 def flatten(arr):
     for x in arr:
@@ -3024,7 +831,7 @@ def flatten(arr):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 29/60] gcd
+[Example 9/40] gcd
 ---- Prompt ----
 def gcd(a, b):
     if b == 0:
@@ -3107,7 +914,7 @@ def gcd(a, b):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 30/60] get_factors
+[Example 10/40] get_factors
 ---- Prompt ----
 def get_factors(n):
     if n == 1:
@@ -3215,7 +1022,7 @@ def get_factors(n):
 [BLEU] 0.8180
 [Levenshtein Distance] 9, Similarity: 0.9751
 ============================================================
-[Example 31/60] hanoi
+[Example 11/40] hanoi
 ---- Prompt ----
 def hanoi(height, start=1, end=3):
     steps = []
@@ -3326,7 +1133,7 @@ def hanoi(height, start=1, end=3):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 32/60] is_valid_parenthesization
+[Example 12/40] is_valid_parenthesization
 ---- Prompt ----
 def is_valid_parenthesization(parens):
     depth = 0
@@ -3433,7 +1240,7 @@ def is_valid_parenthesization(parens):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 33/60] kheapsort
+[Example 13/40] kheapsort
 ---- Prompt ----
 def kheapsort(arr, k):
     import heapq
@@ -3553,7 +1360,7 @@ def kheapsort(arr, k):
 [BLEU] 0.7077
 [Levenshtein Distance] 6, Similarity: 0.9845
 ============================================================
-[Example 34/60] knapsack
+[Example 14/40] knapsack
 ---- Prompt ----
 def knapsack(capacity, items):
     from collections import defaultdict
@@ -3686,7 +1493,7 @@ def knapsack(capacity, items):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 35/60] kth
+[Example 15/40] kth
 ---- Prompt ----
 def kth(arr, k):
     pivot = arr[0]
@@ -3802,7 +1609,7 @@ def kth(arr, k):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 36/60] lcs_length
+[Example 16/40] lcs_length
 ---- Prompt ----
 def lcs_length(s, t):
     from collections import Counter
@@ -3905,7 +1712,7 @@ def lcs_length(s, t):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 37/60] levenshtein
+[Example 17/40] levenshtein
 ---- Prompt ----
 def levenshtein(source, target):
     if source == '' or target == '':
@@ -4023,7 +1830,7 @@ def levenshtein(source, target):
 [BLEU] 0.8967
 [Levenshtein Distance] 4, Similarity: 0.9948
 ============================================================
-[Example 38/60] lis
+[Example 18/40] lis
 ---- Prompt ----
 def lis(arr):
     ends = {}
@@ -4144,7 +1951,7 @@ def lis(arr):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 39/60] longest_common_subsequence
+[Example 19/40] longest_common_subsequence
 ---- Prompt ----
 def longest_common_subsequence(a, b):
     if not a or not b:
@@ -4261,7 +2068,7 @@ def longest_common_subsequence(a, b):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 40/60] max_sublist_sum
+[Example 20/40] max_sublist_sum
 ---- Prompt ----
 def max_sublist_sum(arr):
     max_ending_here = 0
@@ -4360,7 +2167,7 @@ def max_sublist_sum(arr):
 [BLEU] 0.7591
 [Levenshtein Distance] 6, Similarity: 0.9861
 ============================================================
-[Example 41/60] mergesort
+[Example 21/40] mergesort
 ---- Prompt ----
 def mergesort(arr):
     def merge(left, right):
@@ -4508,7 +2315,7 @@ def mergesort(arr):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 42/60] minimum_spanning_tree
+[Example 22/40] minimum_spanning_tree
 ---- Prompt ----
 def minimum_spanning_tree(weight_by_edge):
     group_by_node = {}
@@ -4638,7 +2445,7 @@ def minimum_spanning_tree(weight_by_edge):
 [BLEU] 0.8687
 [Levenshtein Distance] 9, Similarity: 0.9872
 ============================================================
-[Example 43/60] next_palindrome
+[Example 23/40] next_palindrome
 ---- Prompt ----
 def next_palindrome(digit_list):
     high_mid = len(digit_list) // 2
@@ -4768,7 +2575,7 @@ def next_palindrome(digit_list):
 [BLEU] 0.9027
 [Levenshtein Distance] 17, Similarity: 0.9831
 ============================================================
-[Example 44/60] next_permutation
+[Example 24/40] next_permutation
 ---- Prompt ----
 def next_permutation(perm):
     for i in range(len(perm) - 2, -1, -1):
@@ -4869,7 +2676,7 @@ def next_permutation(perm):
 [BLEU] 0.8954
 [Levenshtein Distance] 3, Similarity: 0.9926
 ============================================================
-[Example 45/60] pascal
+[Example 25/40] pascal
 ---- Prompt ----
 def pascal(n):
     rows = [[1]]
@@ -4981,7 +2788,7 @@ def pascal(n):
 [BLEU] 0.9067
 [Levenshtein Distance] 4, Similarity: 0.9933
 ============================================================
-[Example 46/60] possible_change
+[Example 26/40] possible_change
 ---- Prompt ----
 # Python 3
 def possible_change(coins, total):
@@ -5105,7 +2912,7 @@ def possible_change(coins, total):
 [BLEU] 0.1313
 [Levenshtein Distance] 733, Similarity: 0.3573
 ============================================================
-[Example 47/60] powerset
+[Example 27/40] powerset
 ---- Prompt ----
 def powerset(arr):
     if arr:
@@ -5193,7 +3000,7 @@ def powerset(arr):
 [BLEU] 0.4828
 [Levenshtein Distance] 85, Similarity: 0.8140
 ============================================================
-[Example 48/60] quicksort
+[Example 28/40] quicksort
 ---- Prompt ----
 def quicksort(arr):
     if not arr:
@@ -5271,7 +3078,7 @@ def quicksort(arr):
 [BLEU] 0.8585
 [Levenshtein Distance] 2, Similarity: 0.9956
 ============================================================
-[Example 49/60] reverse_linked_list
+[Example 29/40] reverse_linked_list
 ---- Prompt ----
 def reverse_linked_list(node):
     prevnode = None
@@ -5363,7 +3170,7 @@ def reverse_linked_list(node):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 50/60] rpn_eval
+[Example 30/40] rpn_eval
 ---- Prompt ----
 def rpn_eval(tokens):
     def op(symbol, a, b):
@@ -5521,7 +3328,7 @@ def rpn_eval(tokens):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 51/60] shortest_path_length
+[Example 31/40] shortest_path_length
 ---- Prompt ----
 from heapq import *
 
@@ -5760,7 +3567,7 @@ def insert_or_update(node_heap, dist_node):
 [BLEU] 0.9405
 [Levenshtein Distance] 45, Similarity: 0.9803
 ============================================================
-[Example 52/60] shortest_path_lengths
+[Example 32/40] shortest_path_lengths
 ---- Prompt ----
 from collections import defaultdict
 
@@ -5870,7 +3677,7 @@ def shortest_path_lengths(n, length_by_edge):
 [BLEU] 0.9070
 [Levenshtein Distance] 36, Similarity: 0.9634
 ============================================================
-[Example 53/60] shortest_paths
+[Example 33/40] shortest_paths
 ---- Prompt ----
 def shortest_paths(source, weight_by_edge):
     weight_by_node = {
@@ -6018,7 +3825,7 @@ def shortest_paths(source, weight_by_edge):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 54/60] shunting_yard
+[Example 34/40] shunting_yard
 ---- Prompt ----
 def shunting_yard(tokens):
     precedence = {
@@ -6188,7 +3995,7 @@ def shunting_yard(tokens):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 55/60] sieve
+[Example 35/40] sieve
 ---- Prompt ----
 def sieve(max):
     primes = []
@@ -6258,7 +4065,7 @@ def sieve(max):
 [BLEU] 0.7562
 [Levenshtein Distance] 8, Similarity: 0.9646
 ============================================================
-[Example 56/60] sqrt
+[Example 36/40] sqrt
 ---- Prompt ----
 def sqrt(x, epsilon):
     approx = x / 2
@@ -6344,7 +4151,7 @@ def sqrt(x, epsilon):
 [BLEU] 0.7153
 [Levenshtein Distance] 7, Similarity: 0.9756
 ============================================================
-[Example 57/60] subsequences
+[Example 37/40] subsequences
 ---- Prompt ----
 def subsequences(a, b, k):
     if k == 0:
@@ -6447,7 +4254,7 @@ def subsequences(a, b, k):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 58/60] to_base
+[Example 38/40] to_base
 ---- Prompt ----
 import string
 def to_base(num, b):
@@ -6565,7 +4372,7 @@ def to_base(num, b):
 [BLEU] 0.3974
 [Levenshtein Distance] 308, Similarity: 0.5904
 ============================================================
-[Example 59/60] topological_ordering
+[Example 39/40] topological_ordering
 ---- Prompt ----
 def topological_ordering(nodes):
     ordered_nodes = [node for node in nodes if not node.incoming_nodes]
@@ -6650,7 +4457,7 @@ def topological_ordering(nodes):
 [BLEU] 1.0000
 [Levenshtein Distance] 0, Similarity: 1.0000
 ============================================================
-[Example 60/60] wrap
+[Example 40/40] wrap
 ---- Prompt ----
 def wrap(text, cols):
     lines = []
@@ -6750,15 +4557,15 @@ def wrap(text, cols):
 [NO AST MATCH ❌]
 ❌ Test failure: 
 [UNIT TEST FAIL ❌]
-[CodeBLEU] 0.7242
+[CodeBLEU] 0.7414
 [BLEU] 0.7875
 [Levenshtein Distance] 27, Similarity: 0.9459
 
 --- Evaluation Results ---
-Exact match: 32/60 (53.33%)
-AST match:   32/60 (53.33%)
-Unit test match: 39/60 (65.00%)
-Avg CodeBLEU score: 0.9168
-Avg BLEU score: 0.8905
-Avg Levenshtein distance: 28.17
-Avg Levenshtein similarity ratio: 0.9677
+Exact match: 19/40 (47.50%)
+AST match:   19/40 (47.50%)
+Unit test match: 24/40 (60.00%)
+Avg CodeBLEU score: 0.9087
+Avg BLEU score: 0.8766
+Avg Levenshtein distance: 34.52
+Avg Levenshtein similarity ratio: 0.9595
