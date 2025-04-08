@@ -10,6 +10,7 @@ from codebleu import calc_codebleu
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 
 DATASET_PATH = pathlib.Path("datasets/ctssb_testing_finetuned_output_incremental_step_quix.jsonl")
+ADD_IMPORTS = True
 
 
 def load_file(path: pathlib.Path) -> list:
@@ -57,6 +58,21 @@ def replace_consecutive_newlines(entry: str):
     return "\n".join(line for line in entry.splitlines() if line.strip())
 
 
+def insert_import(buggy: str, predicted: str):
+    # check for import statement in buggy lines
+    buggy_lines = buggy.splitlines()
+    if not (buggy_lines[0].strip().startswith("import") or buggy_lines[0].strip().startswith("from")):
+        return predicted
+
+    # import already in predicted lines
+    predicted_lines = predicted.splitlines()
+    if predicted_lines[0].strip().startswith("import") or predicted_lines[0].strip().startswith("from"):
+        return predicted
+
+    import_line = buggy_lines[0]
+    return "\n".join([import_line, predicted])
+
+
 # AST comparison
 def is_ast_equal(code1: str, code2: str) -> bool:
     try:
@@ -100,26 +116,6 @@ def passes_unit_tests(code: str, tests: str) -> bool:
         return False
 
 
-def insert_docstring_into_function(docstring: str, code: str) -> str:
-    lines = code.splitlines()
-    indent = " " * 4 if len(lines) > 1 and lines[1].startswith("    ") else " " * 2
-    docstring_lines = [f"{indent}"] + [f"{indent}{line}" for line in docstring.strip().splitlines()] + [f"{indent}"]
-    return "\n".join([lines[0]] + docstring_lines + lines[1:])
-
-
-def build_instruction_prompt(doc: str, code: str):
-    instruction = insert_docstring_into_function(doc, code)
-    return """
-You are an AI assistant, developed by DeepSeek Company. For politically sensitive questions, security and privacy issues, you will refuse to answer.
-### Instruction:
-Provide a fix for the buggy code. Use the doc string to figure out what the code should do.
-{}
-### Response:
-""".format(
-        instruction.strip()
-    ).lstrip()
-
-
 dataset = load_file(DATASET_PATH)
 # Evaluation loop
 exact_matches = 0
@@ -145,6 +141,8 @@ for i, sample in enumerate(dataset):
     predicted_code = clean_generate_output(decoded)
     predicted_code = remove_docstring_from_code(predicted_code)
     predicted_code = replace_consecutive_newlines(predicted_code)
+    if ADD_IMPORTS:
+        predicted_code = insert_import(buggy, predicted_code)
 
     print("=" * 60)
     print(f"[Example {i+1}/{total}] {name}")
