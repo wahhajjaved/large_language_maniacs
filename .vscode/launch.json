@@ -60,10 +60,27 @@
             "env": {"CUDA_VISIBLE_DEVICES":"2"}
         },
         {
+            "name": "inference_deepseek_fine_tuned_quix",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fine_tune.inference_deepseek_fine_tuned_quix",
+            "console": "integratedTerminal",
+            "justMyCode":false,
+            "env": {"CUDA_VISIBLE_DEVICES":"2"}
+        },
+        {
             "name": "analysis",
             "type": "debugpy",
             "request": "launch",
             "module": "scripts.analysis",
+            "console": "integratedTerminal",
+            "justMyCode":false
+        },
+        {
+            "name": "quix",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.quix",
             "console": "integratedTerminal",
             "justMyCode":false
         }
