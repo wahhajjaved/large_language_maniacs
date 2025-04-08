@@ -34,11 +34,28 @@ def save_dataset_incremently(data: list[dict], save_location):
             f.write(line + "\n")
 
 
+# very specific to the quixbugs dataset. Won't work anywhere else
 def insert_docstring_into_function(docstring: str, code: str) -> str:
     lines = code.splitlines()
-    indent = " " * 4 if len(lines) > 1 and lines[1].startswith("    ") else " " * 2
-    docstring_lines = [f"{indent}"] + [f"{indent}{line}" for line in docstring.strip().splitlines()] + [f"{indent}"]
-    return "\n".join([lines[0]] + docstring_lines + lines[1:])
+
+    # Determine where the function starts (skip import if present)
+    if lines[0].strip().startswith("import") or lines[0].strip().startswith("from"):
+        import_line = lines[0]
+        if lines[1].startswith("def"):
+            func_decl_line = lines[1]
+            rest_of_code = lines[2:]
+        else:
+            func_decl_line = lines[2]
+            rest_of_code = lines[3:]
+        indent = " " * 4 if rest_of_code and rest_of_code[0].startswith("    ") else " " * 2
+        docstring_lines = [f"{indent}"] + [f"{indent}{line}" for line in docstring.strip().splitlines()] + [f"{indent}"]
+        return "\n".join([import_line, func_decl_line] + docstring_lines + rest_of_code)
+    else:
+        func_decl_line = lines[0]
+        rest_of_code = lines[1:]
+        indent = " " * 4 if rest_of_code and rest_of_code[0].startswith("    ") else " " * 2
+        docstring_lines = [f"{indent}"] + [f"{indent}{line}" for line in docstring.strip().splitlines()] + [f"{indent}"]
+        return "\n".join([func_decl_line] + docstring_lines + rest_of_code)
 
 
 def build_instruction_prompt(doc: str, code: str):
@@ -56,6 +73,14 @@ Provide a fix for the buggy code. Use the doc string to figure out what the code
 
 def main_incremental():
     testing_dataset = datasets.load_dataset(TESTING_DATASET, split="train")
+    names = (
+        "breadth_first_search",
+        "possible_change",
+        "shortest_path_length",
+        "shortest_path_lengths",
+        "to_base",
+    )
+    testing_dataset = testing_dataset.filter(lambda x: x["name"] in names)
 
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -78,7 +103,7 @@ def main_incremental():
 
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_PATH, trust_remote_code=True, padding_side="left")
 
-    batch_size = 10
+    batch_size = 5
     decoded_outputs = []
 
     with torch.inference_mode():
