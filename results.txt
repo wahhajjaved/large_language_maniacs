@@ -1,0 +1,137 @@
+average_bleu_score
+
+ADD_ELEMENTS_TO_ITERABLE    0.88
+CHANGE_BINARY_OPERAND       0.89
+ADD_METHOD_CALL             0.91
+
+SINGLE_TOKEN                0.96
+SAME_FUNCTION_WRONG_CALLER  0.97
+SAME_FUNCTION_SWAP_ARGS     0.98
+
+
+
+
+average_em_score
+
+ADD_ELEMENTS_TO_ITERABLE        0
+LESS_SPECIFIC_IF                0
+ADD_FUNCTION_AROUND_EXPRESSION  0.02
+
+SAME_FUNCTION_WRONG_CALLER      0.32
+SAME_FUNCTION_SWAP_ARGS         0.33
+CHANGE_IDENTIFIER_USED          0.44
+
+
+
+average_ast_match
+
+LESS_SPECIFIC_IF                0
+ADD_FUNCTION_AROUND_EXPRESSION  0.02
+ADD_ELEMENTS_TO_ITERABLE        0.03
+
+SAME_FUNCTION_WRONG_CALLER      0.32
+SAME_FUNCTION_SWAP_ARGS         0.33
+CHANGE_IDENTIFIER_USED          0.44
+
+
+average_codebleu_score
+
+ADD_ELEMENTS_TO_ITERABLE        0.87
+ADD_METHOD_CALL                 0.87
+CHANGE_BINARY_OPERAND           0.87
+
+SINGLE_TOKEN                    0.94
+SAME_FUNCTION_WRONG_CALLER      0.95
+SAME_FUNCTION_SWAP_ARGS         0.96
+
+
+
+
+
+Average scores:
++--------------------------------+------------+------------------+
+| Category                       |   Base Avg |   Fine-Tuned Avg |
++================================+============+==================+
+| ADD_ELEMENTS_TO_ITERABLE       |      0.494 |            0.54  |
++--------------------------------+------------+------------------+
+| MORE_SPECIFIC_IF               |      0.508 |            0.566 |
++--------------------------------+------------+------------------+
+| LESS_SPECIFIC_IF               |      0.504 |            0.566 |
++--------------------------------+------------+------------------+
+| ADD_FUNCTION_AROUND_EXPRESSION |      0.506 |            0.57  |
++--------------------------------+------------+------------------+
+| SAME_FUNCTION_MORE_ARGS        |      0.486 |            0.572 |
++--------------------------------+------------+------------------+
+| CHANGE_BINARY_OPERAND          |      0.474 |            0.59  |
++--------------------------------+------------+------------------+
+| CHANGE_NUMERIC_LITERAL         |      0.512 |            0.594 |
++--------------------------------+------------+------------------+
+| CHANGE_STRING_LITERAL          |      0.486 |            0.614 |
++--------------------------------+------------+------------------+
+| ADD_METHOD_CALL                |      0.486 |            0.616 |
++--------------------------------+------------+------------------+
+| ADD_ATTRIBUTE_ACCESS           |      0.514 |            0.618 |
++--------------------------------+------------+------------------+
+| WRONG_FUNCTION_NAME            |      0.508 |            0.632 |
++--------------------------------+------------+------------------+
+| overall                        |      0.508 |            0.634 |
++--------------------------------+------------+------------------+
+| CHANGE_BOOLEAN_LITERAL         |      0.504 |            0.638 |
++--------------------------------+------------+------------------+
+| CHANGE_BINARY_OPERATOR         |      0.522 |            0.638 |
++--------------------------------+------------+------------------+
+| CHANGE_CONSTANT_TYPE           |      0.524 |            0.638 |
++--------------------------------+------------+------------------+
+| CHANGE_KEYWORD_ARGUMENT_USED   |      0.496 |            0.64  |
++--------------------------------+------------+------------------+
+| SAME_FUNCTION_LESS_ARGS        |      0.514 |            0.642 |
++--------------------------------+------------+------------------+
+| CHANGE_ATTRIBUTE_USED          |      0.522 |            0.644 |
++--------------------------------+------------+------------------+
+| CHANGE_UNARY_OPERATOR          |      0.512 |            0.65  |
++--------------------------------+------------+------------------+
+| SINGLE_TOKEN                   |      0.534 |            0.692 |
++--------------------------------+------------+------------------+
+| SAME_FUNCTION_WRONG_CALLER     |      0.528 |            0.71  |
++--------------------------------+------------+------------------+
+| SAME_FUNCTION_SWAP_ARGS        |      0.5   |            0.718 |
++--------------------------------+------------+------------------+
+| CHANGE_IDENTIFIER_USED         |      0.55  |            0.74  |
++--------------------------------+------------+------------------+
+def buffering_next():
+            buf = []
+            c_size = 0
+            push = buf.append
+            next = self._gen.next
+
+            try:
+                while True:
+                    item = next()
+                    if item:
+                        push(item)
+                        c_size += 1
+                    if c_size >= size:
+                        raise StopIteration()
+            except StopIteration:
+                if not size:
+                    raise
+            return u''.join(buf)
+
+def buffering_next():
+            buf = []
+            c_size = 0
+            push = buf.append
+            next = self._gen.next
+
+            try:
+                while True:
+                    item = next()
+                    if item:
+                        push(item)
+                        c_size += 1
+                    if c_size >= size:
+                        raise StopIteration()
+            except StopIteration:
+                if not c_size:
+                    raise
+            return u''.join(buf)
